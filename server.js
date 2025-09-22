@@ -1,0 +1,129 @@
+'use strict';
+
+const path = require('path');
+const express = require('express');
+
+const app = express();
+const PORT = process.env.PORT || 4000;
+const API_BASE_URL = 'https://api.twitterapi.io';
+
+app.use(express.json({ limit: '100kb' }));
+app.use(express.static(path.join(__dirname)));
+
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+function extractApiKey(req, res) {
+  const keyFromBody = req.body?.apiKey;
+  const keyFromHeader = req.headers['x-api-key'];
+  const key = typeof keyFromBody === 'string' && keyFromBody.trim()
+    ? keyFromBody.trim()
+    : typeof keyFromHeader === 'string' && keyFromHeader.trim()
+      ? keyFromHeader.trim()
+      : null;
+
+  if (!key) {
+    res.status(400).json({ message: 'apiKey is required' });
+    return null;
+  }
+
+  return key;
+}
+
+async function forwardRequest(path, apiKey, fetchOptions = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      ...fetchOptions,
+      headers: {
+        'X-API-Key': apiKey,
+        Accept: 'application/json',
+        ...fetchOptions.headers
+      },
+      signal: controller.signal
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    return { response, payload };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+app.post('/api/verify', async (req, res) => {
+  const apiKey = extractApiKey(req, res);
+  if (!apiKey) return;
+
+  try {
+    const { response, payload } = await forwardRequest('/oapi/my/info', apiKey);
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: payload?.message || 'Unable to verify API key.'
+      });
+    }
+
+    return res.json({
+      credits: payload?.recharge_credits ?? null
+    });
+  } catch (error) {
+    const message = error.name === 'AbortError'
+      ? 'twitterapi.io verification timed out.'
+      : 'Unexpected error verifying API key.';
+    return res.status(502).json({ message });
+  }
+});
+
+app.post('/api/tweets', async (req, res) => {
+  const apiKey = extractApiKey(req, res);
+  if (!apiKey) return;
+
+  const { tweetId } = req.body || {};
+  if (!tweetId || typeof tweetId !== 'string') {
+    return res.status(400).json({ message: 'tweetId is required.' });
+  }
+
+  const url = new URL('/twitter/tweets', API_BASE_URL);
+  url.searchParams.set('tweet_ids', tweetId);
+
+  try {
+    const { response, payload } = await forwardRequest(url.pathname + url.search, apiKey);
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: payload?.message || 'Unable to fetch tweet.'
+      });
+    }
+
+    if (!payload || payload.status !== 'success' || !Array.isArray(payload.tweets)) {
+      return res.status(502).json({ message: 'Unexpected response from twitterapi.io.' });
+    }
+
+    const tweet = payload.tweets.find((entry) => entry?.id === tweetId) || payload.tweets[0] || null;
+    if (!tweet) {
+      return res.status(404).json({ message: 'Tweet not found.' });
+    }
+
+    return res.json({ tweet });
+  } catch (error) {
+    const message = error.name === 'AbortError'
+      ? 'twitterapi.io request timed out.'
+      : 'Unexpected error fetching tweet.';
+    return res.status(502).json({ message });
+  }
+});
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Proxy listening on http://localhost:${PORT}`);
+});
