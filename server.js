@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 
 const app = express();
@@ -96,6 +97,16 @@ app.post('/api/tweets', async (req, res) => {
 
   try {
     const { response, payload } = await forwardRequest(url.pathname + url.search, apiKey);
+    if (process.env.DEBUG_TWEETS === 'true') {
+      const pretty = JSON.stringify(payload, null, 2);
+      console.log('twitterapi.io /twitter/tweets payload:', pretty);
+      try {
+        fs.writeFileSync('/tmp/tweet-link-saver-tweets.json', pretty);
+      } catch (err) {
+        console.warn('Unable to write tweet payload log', err);
+      }
+    }
+
     if (!response.ok) {
       return res.status(response.status).json({
         message: payload?.message || 'Unable to fetch tweet.'
@@ -116,6 +127,59 @@ app.post('/api/tweets', async (req, res) => {
     const message = error.name === 'AbortError'
       ? 'twitterapi.io request timed out.'
       : 'Unexpected error fetching tweet.';
+    return res.status(502).json({ message });
+  }
+});
+
+app.post('/api/thread', async (req, res) => {
+  const apiKey = extractApiKey(req, res);
+  if (!apiKey) return;
+
+  const { tweetId, cursor = '' } = req.body || {};
+  if (!tweetId || typeof tweetId !== 'string') {
+    return res.status(400).json({ message: 'tweetId is required.' });
+  }
+
+  const url = new URL('/twitter/tweet/thread_context', API_BASE_URL);
+  url.searchParams.set('tweetId', tweetId);
+  if (cursor) {
+    url.searchParams.set('cursor', cursor);
+  }
+
+  try {
+    const { response, payload } = await forwardRequest(url.pathname + url.search, apiKey);
+    if (process.env.DEBUG_TWEETS === 'true') {
+      const pretty = JSON.stringify(payload, null, 2);
+      console.log('twitterapi.io /twitter/tweet/thread_context payload:', pretty);
+      try {
+        fs.writeFileSync('/tmp/tweet-link-saver-thread.json', pretty);
+      } catch (err) {
+        console.warn('Unable to write thread payload log', err);
+      }
+    }
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        message: payload?.message || 'Unable to load thread.'
+      });
+    }
+
+    let tweets = [];
+    if (Array.isArray(payload?.tweets)) {
+      tweets = payload.tweets;
+    } else if (Array.isArray(payload?.replies)) {
+      tweets = payload.replies;
+    }
+
+    return res.json({
+      tweets,
+      hasNextPage: payload?.has_next_page ?? payload?.hasNextPage ?? false,
+      nextCursor: payload?.next_cursor ?? payload?.nextCursor ?? null
+    });
+  } catch (error) {
+    const message = error.name === 'AbortError'
+      ? 'twitterapi.io thread request timed out.'
+      : 'Unexpected error fetching thread.';
     return res.status(502).json({ message });
   }
 });
