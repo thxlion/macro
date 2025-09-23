@@ -2,7 +2,8 @@
 
 const ENDPOINTS = Object.freeze({
   VERIFY: '/api/verify',
-  TWEET: '/api/tweets'
+  TWEET: '/api/tweets',
+  THREAD: '/api/thread'
 });
 
 const SUPPORTED_HOSTS = new Set([
@@ -15,7 +16,8 @@ const SUPPORTED_HOSTS = new Set([
 
 const STORAGE_KEYS = Object.freeze({
   ITEMS: 'tweet-link-saver-items',
-  API_KEY: 'tweet-link-saver-api-key'
+  API_KEY: 'tweet-link-saver-api-key',
+  THREADS: 'tweet-link-saver-thread-cache'
 });
 
 const palette = Object.freeze({
@@ -31,7 +33,9 @@ const state = {
   credits: null,
   isSaving: false,
   isAuthenticating: false,
-  activeTweetId: null
+  activeTweetId: null,
+  threads: {},
+  threadStatus: {}
 };
 
 const elements = {};
@@ -123,6 +127,8 @@ function attachEventHandlers() {
 
 function initialize() {
   loadStoredItems();
+  loadStoredThreads();
+  removeOrphanedThreads();
   renderItems();
   renderDetail();
   updateSaveButtonState();
@@ -168,6 +174,63 @@ function loadStoredItems() {
 
 function persistItems() {
   localStorage.setItem(STORAGE_KEYS.ITEMS, JSON.stringify(state.items));
+}
+
+function loadStoredThreads() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.THREADS);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    Object.entries(parsed).forEach(([tweetId, entry]) => {
+      if (!tweetId || !entry || typeof entry !== 'object') return;
+      const tweets = Array.isArray(entry.tweets) ? entry.tweets : [];
+      if (!tweets.length) return;
+      state.threads[tweetId] = {
+        tweets,
+        fetchedAt: typeof entry.fetchedAt === 'number' ? entry.fetchedAt : null,
+        rootTweetId: entry.rootTweetId || null
+      };
+    });
+  } catch (error) {
+    console.error('Failed to load cached threads', error);
+  }
+}
+
+function persistThreads() {
+  try {
+    const serializable = {};
+    Object.entries(state.threads).forEach(([tweetId, entry]) => {
+      if (!tweetId || !entry || typeof entry !== 'object') return;
+      if (!Array.isArray(entry.tweets) || entry.tweets.length === 0) return;
+      serializable[tweetId] = {
+        tweets: entry.tweets,
+        fetchedAt: typeof entry.fetchedAt === 'number' ? entry.fetchedAt : Date.now(),
+        rootTweetId: entry.rootTweetId || null
+      };
+    });
+    if (Object.keys(serializable).length === 0) {
+      localStorage.removeItem(STORAGE_KEYS.THREADS);
+      return;
+    }
+    localStorage.setItem(STORAGE_KEYS.THREADS, JSON.stringify(serializable));
+  } catch (error) {
+    console.error('Failed to persist cached threads', error);
+  }
+}
+
+function removeOrphanedThreads() {
+  const validIds = new Set(state.items.map((item) => item.tweetId));
+  let didChange = false;
+  Object.keys(state.threads).forEach((tweetId) => {
+    if (validIds.has(tweetId)) return;
+    delete state.threads[tweetId];
+    delete state.threadStatus[tweetId];
+    didChange = true;
+  });
+  if (didChange) {
+    persistThreads();
+  }
 }
 
 function loadStoredApiKey() {
@@ -269,6 +332,15 @@ async function handleSave(event) {
 function deleteItem(tweetId) {
   state.items = state.items.filter((entry) => entry.tweetId !== tweetId);
   persistItems();
+  if (tweetId) {
+    if (state.threads[tweetId]) {
+      delete state.threads[tweetId];
+      persistThreads();
+    }
+    if (state.threadStatus[tweetId]) {
+      delete state.threadStatus[tweetId];
+    }
+  }
   if (state.activeTweetId === tweetId) {
     state.activeTweetId = null;
   }
@@ -414,7 +486,15 @@ function renderDetail() {
     return;
   }
 
-  const tweet = item.tweet;
+  const status = ensureThreadStatus(item.tweetId);
+  const cachedThread = state.threads[item.tweetId] || null;
+  if (!cachedThread && state.apiKey && !status.loading && !status.error) {
+    loadThread(item.tweetId);
+  }
+
+  const tweetsForArticle = buildThreadSequence(item.tweet, cachedThread?.tweets || []);
+  const leadTweet = tweetsForArticle[0] || item.tweet;
+
   elements.detailPlaceholder.classList.add('hidden');
   elements.detailContainer.classList.remove('hidden');
   elements.detailContainer.innerHTML = '';
@@ -422,7 +502,7 @@ function renderDetail() {
   document.body.classList.add('overflow-hidden');
 
   if (elements.detailTitle) {
-    const author = tweet?.author;
+    const author = leadTweet?.author;
     const parts = [author?.name || 'Thread'];
     if (author?.userName) parts.push(`@${author.userName}`);
     elements.detailTitle.textContent = parts.join(' · ');
@@ -430,50 +510,94 @@ function renderDetail() {
 
   const header = document.createElement('div');
   header.className = 'flex items-start gap-3 border-b border-slate-800/60 pb-4';
-  header.append(createAvatarElement(tweet?.author, 64));
+  header.append(createAvatarElement(leadTweet?.author, 64));
 
   const identity = document.createElement('div');
   identity.className = 'space-y-1';
 
   const nameLine = document.createElement('p');
   nameLine.className = 'text-base font-semibold text-slate-100';
-  nameLine.textContent = tweet?.author?.name || 'Unknown';
+  nameLine.textContent = leadTweet?.author?.name || 'Unknown';
   identity.append(nameLine);
 
-  if (tweet?.author?.userName) {
+  if (leadTweet?.author?.userName) {
     const username = document.createElement('p');
     username.className = 'text-sm text-slate-400';
-    username.textContent = `@${tweet.author.userName}`;
+    username.textContent = `@${leadTweet.author.userName}`;
     identity.append(username);
   }
 
   const metaLine = document.createElement('p');
   metaLine.className = 'text-xs text-slate-500';
-  metaLine.textContent = formatDate(tweet?.createdAt);
+  metaLine.textContent = formatDate(leadTweet?.createdAt || leadTweet?.created_at || leadTweet?.legacy?.created_at);
   identity.append(metaLine);
 
   header.append(identity);
   elements.detailContainer.append(header);
 
-  if (tweet?.text) {
-    const body = document.createElement('p');
-    body.className = 'mt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-100';
-    body.textContent = tweet.text;
-    elements.detailContainer.append(body);
+  if (status.loading && (!cachedThread || !cachedThread.tweets?.length)) {
+    const loadingMessage = document.createElement('p');
+    loadingMessage.className = 'mt-6 text-sm text-slate-400';
+    loadingMessage.textContent = 'Loading full thread...';
+    elements.detailContainer.append(loadingMessage);
+    return;
   }
 
-  const mediaItems = collectMedia(tweet);
+  if (status.error && (!cachedThread || !cachedThread.tweets?.length)) {
+    const errorWrapper = document.createElement('div');
+    errorWrapper.className = 'mt-6 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-200';
+    errorWrapper.textContent = status.error;
+
+    const retryButton = document.createElement('button');
+    retryButton.type = 'button';
+    retryButton.className = 'mt-3 rounded-md border border-sky-500 px-3 py-1 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50';
+    retryButton.textContent = 'Retry';
+    retryButton.addEventListener('click', () => loadThread(item.tweetId, { force: true }));
+    errorWrapper.append(retryButton);
+
+    elements.detailContainer.append(errorWrapper);
+    return;
+  }
+
+  const articleWrapper = document.createElement('div');
+  articleWrapper.className = 'mt-4 space-y-4 text-sm leading-relaxed text-slate-100 sm:text-base';
+
+  const contentBlocks = composeThreadContentBlocks(tweetsForArticle);
+  if (contentBlocks.length > 0) {
+    contentBlocks.forEach((block) => {
+      if (block.type === 'text') {
+        const paragraph = document.createElement('p');
+        paragraph.className = 'whitespace-pre-wrap';
+        paragraph.textContent = block.text;
+        articleWrapper.append(paragraph);
+      } else if (block.type === 'link-card') {
+        articleWrapper.append(createLinkPreview(block.link));
+      }
+    });
+  } else {
+    const fallbackText = getTweetText(leadTweet);
+    if (fallbackText) {
+      const fallback = document.createElement('p');
+      fallback.className = 'whitespace-pre-wrap';
+      fallback.textContent = fallbackText;
+      articleWrapper.append(fallback);
+    }
+  }
+
+  elements.detailContainer.append(articleWrapper);
+
+  const mediaItems = aggregateMediaFromTweets(tweetsForArticle);
   if (mediaItems.length > 0) {
     const mediaWrapper = document.createElement('div');
-    mediaWrapper.className = 'mt-4 grid gap-4 sm:grid-cols-2';
+    mediaWrapper.className = 'mt-6 grid gap-4 sm:grid-cols-2';
     mediaItems.forEach((media) => {
-      if (media.type === 'photo' || media.media_url_https) {
+      if (media.type === 'photo' || media.media_url_https || media.media_url) {
         const figure = document.createElement('figure');
         figure.className = 'overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80';
 
         const img = document.createElement('img');
         img.src = media.media_url_https || media.media_url;
-        img.alt = media.alt_text || media.ext_alt_text || 'Tweet image';
+        img.alt = media.alt_text || media.ext_alt_text || 'Thread image';
         img.loading = 'lazy';
         img.className = 'h-full w-full object-cover';
         figure.append(img);
@@ -504,13 +628,13 @@ function renderDetail() {
   }
 
   const metrics = document.createElement('div');
-  metrics.className = 'mt-4 flex flex-wrap gap-3 text-xs text-slate-400';
+  metrics.className = 'mt-6 flex flex-wrap gap-3 text-xs text-slate-400';
   const metricInfo = [
-    ['Likes', tweet?.likeCount],
-    ['Replies', tweet?.replyCount],
-    ['Retweets', tweet?.retweetCount],
-    ['Quotes', tweet?.quoteCount],
-    ['Views', tweet?.viewCount]
+    ['Likes', leadTweet?.likeCount],
+    ['Replies', leadTweet?.replyCount],
+    ['Retweets', leadTweet?.retweetCount],
+    ['Quotes', leadTweet?.quoteCount],
+    ['Views', leadTweet?.viewCount]
   ];
   metricInfo.forEach(([label, value]) => {
     if (typeof value === 'number') {
@@ -524,7 +648,17 @@ function renderDetail() {
   }
 
   const footer = document.createElement('div');
-  footer.className = 'mt-6 flex justify-end border-t border-slate-800/60 pt-4';
+  footer.className = 'mt-6 flex flex-col gap-3 border-t border-slate-800/60 pt-4 sm:flex-row sm:items-center sm:justify-between';
+
+  if (cachedThread?.fetchedAt) {
+    const formatted = formatDate(cachedThread.fetchedAt);
+    if (formatted) {
+      const cachedTime = document.createElement('p');
+      cachedTime.className = 'text-xs text-slate-500';
+      cachedTime.textContent = `Thread cached on ${formatted}.`;
+      footer.append(cachedTime);
+    }
+  }
 
   const viewButton = document.createElement('a');
   viewButton.href = item.url;
@@ -533,7 +667,255 @@ function renderDetail() {
   viewButton.className = 'rounded-md border border-sky-500 px-4 py-2 text-sm font-semibold text-sky-300 transition hover:bg-sky-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50';
   viewButton.textContent = 'View original tweet';
   footer.append(viewButton);
+
   elements.detailContainer.append(footer);
+}
+
+function composeThreadContentBlocks(tweets = []) {
+  const blocks = [];
+  tweets.forEach((tweet) => {
+    if (!tweet || typeof tweet !== 'object') return;
+    const text = getTweetText(tweet);
+    const links = extractLinksFromTweet(tweet);
+
+    let processedText = text;
+    links.forEach((link) => {
+      const candidates = [link.url, link.expandedUrl, link.expanded_url];
+      candidates.forEach((value) => {
+        if (!value) return;
+        const regexp = new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        processedText = processedText.replace(regexp, '').trim();
+      });
+    });
+
+    processedText
+      .split(/\n{2,}/)
+      .map((chunk) => chunk.trim())
+      .filter(Boolean)
+      .forEach((chunk) => {
+        blocks.push({ type: 'text', text: chunk });
+      });
+
+    links.forEach((link) => {
+      const card = buildLinkCardData(link);
+      if (card) {
+        blocks.push({ type: 'link-card', link: card });
+      }
+    });
+  });
+  return blocks;
+}
+
+function createLinkPreview(link) {
+  const anchor = document.createElement('a');
+  anchor.href = link.href || link.url;
+  anchor.target = '_blank';
+  anchor.rel = 'noopener noreferrer';
+  anchor.className = 'flex items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 transition hover:border-sky-500/40 hover:bg-slate-900';
+
+  const textColumn = document.createElement('div');
+  textColumn.className = 'flex min-w-0 flex-1 flex-col';
+
+  const titleElement = document.createElement('p');
+  titleElement.className = 'truncate text-sm font-semibold text-slate-100 sm:text-base';
+  titleElement.textContent = link.title;
+  textColumn.append(titleElement);
+
+  if (link.displayUrl) {
+    const urlElement = document.createElement('p');
+    urlElement.className = 'mt-1 truncate text-xs text-slate-400';
+    urlElement.textContent = link.displayUrl;
+    textColumn.append(urlElement);
+  }
+
+  const imageWrapper = document.createElement('div');
+  imageWrapper.className = 'flex h-12 w-12 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/80';
+
+  if (link.favicon) {
+    const img = document.createElement('img');
+    img.src = link.favicon;
+    img.alt = link.domain ? `${link.domain} favicon` : 'Link preview';
+    img.loading = 'lazy';
+    img.className = 'h-8 w-8 rounded object-contain';
+    imageWrapper.append(img);
+  } else if (link.domainInitial) {
+    const fallback = document.createElement('span');
+    fallback.className = 'text-sm font-semibold text-slate-400';
+    fallback.textContent = link.domainInitial;
+    imageWrapper.append(fallback);
+  }
+
+  anchor.append(textColumn, imageWrapper);
+  return anchor;
+}
+
+function aggregateMediaFromTweets(tweets = []) {
+  const media = [];
+  const seen = new Set();
+  tweets.forEach((tweet) => {
+    const items = collectMedia(tweet);
+    if (!items.length) return;
+    const sourceTweetId = getTweetId(tweet);
+    items.forEach((item) => {
+      const src = item?.media_url_https || item?.media_url || item?.url;
+      const key = src || `${sourceTweetId || 'tweet'}-${item?.id || item?.media_key || media.length}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      media.push({ ...item, sourceTweetId });
+    });
+  });
+  return media;
+}
+
+function extractLinksFromTweet(tweet = {}) {
+  const entities = tweet.entities || tweet.legacy?.entities || tweet.legacy?.extended_entities;
+  const urls = Array.isArray(entities?.urls) ? entities.urls : [];
+  const cardLinks = Array.isArray(tweet.cards) ? tweet.cards : [];
+  const results = [];
+
+  urls.forEach((entry) => {
+    if (!entry) return;
+    const expanded = entry.expanded_url || entry.expandedUrl || entry.unwound_url || entry.unwoundUrl || entry.url;
+    if (!expanded) return;
+    results.push({
+      url: entry.url || expanded,
+      expandedUrl: expanded,
+      displayUrl: entry.display_url || entry.displayUrl || simplifyUrl(expanded),
+      title: entry.title || entry.card_title || null
+    });
+  });
+
+  cardLinks.forEach((card) => {
+    if (!card || !card.url) return;
+    const expanded = card.url;
+    results.push({
+      url: card.url,
+      expandedUrl: expanded,
+      displayUrl: card.display_url || simplifyUrl(expanded),
+      title: card.title || card.name || null
+    });
+  });
+
+  return results;
+}
+
+function buildLinkCardData(link) {
+  try {
+    const raw = link.expandedUrl || link.url;
+    if (!raw) return null;
+    const url = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
+    const domain = url.hostname.replace(/^www\./i, '');
+    const title = link.title || domain;
+    const displayUrl = link.displayUrl || `${domain}${url.pathname !== '/' ? url.pathname : ''}`;
+    return {
+      href: url.href,
+      url: link.url,
+      title,
+      displayUrl,
+      domain,
+      domainInitial: domain?.[0]?.toUpperCase() || null,
+      favicon: getFaviconUrl(url)
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function getFaviconUrl(url) {
+  if (!url) return null;
+  const origin = `${url.protocol}//${url.hostname}`;
+  return `${origin}/favicon.ico`;
+}
+
+function simplifyUrl(value = '') {
+  return value.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+}
+
+function getTweetText(tweet) {
+  if (!tweet || typeof tweet !== 'object') return '';
+  const text = tweet.text
+    || tweet.full_text
+    || tweet.legacy?.full_text
+    || tweet.legacy?.text
+    || '';
+  return typeof text === 'string' ? text : '';
+}
+
+function buildThreadSequence(rootTweet, fetchedTweets = []) {
+  const entries = [];
+  const seen = new Set();
+  let sequence = 0;
+
+  const pushTweet = (tweet) => {
+    if (!tweet || typeof tweet !== 'object') return;
+    const id = getTweetId(tweet);
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    const timestamp = getTweetTimestamp(tweet);
+    entries.push({
+      tweet,
+      hasTimestamp: timestamp !== null,
+      timestamp: timestamp ?? 0,
+      sequence: sequence++
+    });
+  };
+
+  pushTweet(rootTweet);
+  if (Array.isArray(fetchedTweets)) {
+    fetchedTweets.forEach(pushTweet);
+  }
+
+  entries.sort((a, b) => {
+    if (a.hasTimestamp && b.hasTimestamp) {
+      return a.timestamp - b.timestamp;
+    }
+    if (a.hasTimestamp) return -1;
+    if (b.hasTimestamp) return 1;
+    return a.sequence - b.sequence;
+  });
+
+  return entries.map((entry) => entry.tweet);
+}
+
+function ensureThreadStatus(tweetId) {
+  if (!tweetId) {
+    return { loading: false, error: null };
+  }
+  if (!state.threadStatus[tweetId]) {
+    state.threadStatus[tweetId] = { loading: false, error: null };
+  }
+  return state.threadStatus[tweetId];
+}
+
+function updateThreadStatus(tweetId, updates) {
+  if (!tweetId) return;
+  const current = ensureThreadStatus(tweetId);
+  state.threadStatus[tweetId] = { ...current, ...updates };
+}
+
+function sanitizeThreadTweets(tweets = []) {
+  const seen = new Set();
+  const normalized = [];
+  tweets.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    const id = getTweetId(entry);
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    normalized.push(entry.id ? entry : { ...entry, id });
+  });
+  return normalized;
+}
+
+function getTweetId(tweet) {
+  return tweet?.id || tweet?.tweet_id || tweet?.tweetId || tweet?.rest_id || null;
+}
+
+function getTweetTimestamp(tweet) {
+  const raw = tweet?.createdAt || tweet?.created_at || tweet?.legacy?.created_at;
+  if (!raw) return null;
+  const date = new Date(raw);
+  const value = date.getTime();
+  return Number.isNaN(value) ? null : value;
 }
 
 function collectMedia(tweet = {}) {
@@ -670,6 +1052,60 @@ async function fetchTweet(tweetId) {
   }
 
   return data.tweet;
+}
+
+async function loadThread(tweetId, { force = false } = {}) {
+  if (!tweetId || !state.apiKey) return null;
+
+  const cached = state.threads[tweetId];
+  if (!force && cached && Array.isArray(cached.tweets) && cached.tweets.length > 0) {
+    return cached;
+  }
+
+  const status = ensureThreadStatus(tweetId);
+  if (status.loading) {
+    return null;
+  }
+
+  updateThreadStatus(tweetId, { loading: true, error: null });
+  renderDetail();
+
+  try {
+    const response = await fetch(ENDPOINTS.THREAD, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ apiKey: state.apiKey, tweetId })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const message = data?.message || 'Unable to load thread.';
+      throw new Error(message);
+    }
+
+    if (!Array.isArray(data?.tweets) || data.tweets.length === 0) {
+      throw new Error('Thread data unavailable.');
+    }
+
+    const sanitized = sanitizeThreadTweets(data.tweets);
+    state.threads[tweetId] = {
+      tweets: sanitized,
+      fetchedAt: typeof data?.fetchedAt === 'number' ? data.fetchedAt : Date.now(),
+      rootTweetId: data?.rootTweetId || tweetId
+    };
+    updateThreadStatus(tweetId, { loading: false, error: null });
+    persistThreads();
+    return state.threads[tweetId];
+  } catch (error) {
+    console.error('Failed to load thread', error);
+    updateThreadStatus(tweetId, { loading: false, error: error.message || 'Unable to load thread.' });
+    return null;
+  } finally {
+    renderDetail();
+  }
 }
 
 function updateKeyStatus(tone = state.apiKey ? 'success' : 'info') {

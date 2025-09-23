@@ -140,41 +140,71 @@ app.post('/api/thread', async (req, res) => {
     return res.status(400).json({ message: 'tweetId is required.' });
   }
 
-  const url = new URL('/twitter/tweet/thread_context', API_BASE_URL);
-  url.searchParams.set('tweetId', tweetId);
-  if (cursor) {
-    url.searchParams.set('cursor', cursor);
-  }
+  const seenIds = new Set();
+  const collectedTweets = [];
+  const maxPages = 8;
+  let hasNextPage = false;
+  let nextCursor = typeof cursor === 'string' ? cursor : '';
+  let attempts = 0;
+  let rootTweetId = null;
 
   try {
-    const { response, payload } = await forwardRequest(url.pathname + url.search, apiKey);
-    if (process.env.DEBUG_TWEETS === 'true') {
-      const pretty = JSON.stringify(payload, null, 2);
-      console.log('twitterapi.io /twitter/tweet/thread_context payload:', pretty);
-      try {
-        fs.writeFileSync('/tmp/tweet-link-saver-thread.json', pretty);
-      } catch (err) {
-        console.warn('Unable to write thread payload log', err);
+    do {
+      const url = new URL('/twitter/tweet/thread_context', API_BASE_URL);
+      url.searchParams.set('tweetId', tweetId);
+      if (nextCursor) {
+        url.searchParams.set('cursor', nextCursor);
       }
-    }
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        message: payload?.message || 'Unable to load thread.'
-      });
-    }
+      const { response, payload } = await forwardRequest(url.pathname + url.search, apiKey);
 
-    let tweets = [];
-    if (Array.isArray(payload?.tweets)) {
-      tweets = payload.tweets;
-    } else if (Array.isArray(payload?.replies)) {
-      tweets = payload.replies;
-    }
+      if (process.env.DEBUG_TWEETS === 'true') {
+        const pretty = JSON.stringify(payload, null, 2);
+        console.log('twitterapi.io /twitter/tweet/thread_context payload:', pretty);
+        try {
+          fs.writeFileSync('/tmp/tweet-link-saver-thread.json', pretty);
+        } catch (err) {
+          console.warn('Unable to write thread payload log', err);
+        }
+      }
+
+      if (!response.ok) {
+        return res.status(response.status).json({
+          message: payload?.message || 'Unable to load thread.'
+        });
+      }
+
+      if (!rootTweetId) {
+        rootTweetId = payload?.tweet?.id
+          || payload?.original_tweet_id
+          || payload?.originalTweetId
+          || tweetId;
+      }
+
+      const pageTweets = Array.isArray(payload?.tweets)
+        ? payload.tweets
+        : Array.isArray(payload?.replies)
+          ? payload.replies
+          : [];
+
+      for (const entry of pageTweets) {
+        const entryId = entry?.id || entry?.tweet_id || entry?.tweetId;
+        if (!entryId || seenIds.has(entryId)) continue;
+        seenIds.add(entryId);
+        collectedTweets.push(entry);
+      }
+
+      hasNextPage = payload?.has_next_page ?? payload?.hasNextPage ?? false;
+      nextCursor = payload?.next_cursor ?? payload?.nextCursor ?? '';
+      attempts += 1;
+    } while (hasNextPage && nextCursor && attempts < maxPages);
 
     return res.json({
-      tweets,
-      hasNextPage: payload?.has_next_page ?? payload?.hasNextPage ?? false,
-      nextCursor: payload?.next_cursor ?? payload?.nextCursor ?? null
+      tweets: collectedTweets,
+      rootTweetId,
+      fetchedAt: Date.now(),
+      hasNextPage: hasNextPage && !!nextCursor,
+      nextCursor: hasNextPage ? nextCursor : null
     });
   } catch (error) {
     const message = error.name === 'AbortError'
