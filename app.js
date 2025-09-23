@@ -313,11 +313,14 @@ async function handleSave(event) {
       tweet,
       savedAt: Date.now()
     };
+    const previousActiveId = state.activeTweetId;
     state.items.unshift(newItem);
-    state.activeTweetId = tweetId;
     persistItems();
     renderItems();
-    renderDetail();
+    if (previousActiveId) {
+      renderDetail();
+    }
+    loadThread(tweetId);
     elements.input.value = '';
     showMessage('Tweet saved.', 'success');
   } catch (error) {
@@ -391,21 +394,21 @@ function renderItems() {
 
     const selectButton = document.createElement('button');
     selectButton.type = 'button';
-    selectButton.className = 'flex flex-1 items-center gap-4 text-left focus:outline-none';
+    selectButton.className = 'flex flex-1 items-center gap-4 overflow-hidden text-left focus:outline-none';
     selectButton.addEventListener('click', () => selectItem(item.tweetId));
 
     const avatar = createAvatarElement(item.tweet?.author, 56);
 
     const textColumn = document.createElement('div');
-    textColumn.className = 'flex-1 overflow-hidden';
+    textColumn.className = 'flex-1 min-w-0 overflow-hidden';
 
     const snippet = document.createElement('p');
     snippet.className = 'truncate text-sm font-medium text-slate-100';
-    const firstLine = (item.tweet?.text || item.url || '').split(/\r?\n/)[0];
+    const firstLine = (getTweetText(item.tweet) || item.url || '').split(/\r?\n/)[0];
     snippet.textContent = firstLine || 'Saved tweet';
 
     const authorLine = document.createElement('p');
-    authorLine.className = 'mt-1 flex items-center gap-2 text-xs text-slate-400';
+    authorLine.className = 'mt-1 flex items-center gap-2 truncate text-xs text-slate-400';
     if (item.tweet?.author) {
       const { name, userName } = item.tweet.author;
       authorLine.textContent = [name || 'Unknown', userName ? `@${userName}` : null]
@@ -681,21 +684,6 @@ function createMediaGroup(mediaItems) {
 function createSingleMediaCard(media, isNested = false) {
   if (!media) return document.createDocumentFragment();
 
-  if (media.type === 'photo' || media.media_url_https || media.media_url) {
-    const figure = document.createElement('figure');
-    figure.className = isNested
-      ? 'overflow-hidden rounded-xl border border-slate-800/60 bg-slate-900/70'
-      : 'overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80';
-
-    const img = document.createElement('img');
-    img.src = media.media_url_https || media.media_url;
-    img.alt = media.alt_text || media.ext_alt_text || 'Thread image';
-    img.loading = 'lazy';
-    img.className = 'h-full w-full object-cover';
-    figure.append(img);
-    return figure;
-  }
-
   if (media.type === 'video' || media.type === 'animated_gif') {
     const container = document.createElement('div');
     container.className = isNested
@@ -718,6 +706,21 @@ function createSingleMediaCard(media, isNested = false) {
     }
     container.append(video);
     return container;
+  }
+
+  if (media.type === 'photo' || media.media_url_https || media.media_url) {
+    const figure = document.createElement('figure');
+    figure.className = isNested
+      ? 'overflow-hidden rounded-xl border border-slate-800/60 bg-slate-900/70'
+      : 'overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80';
+
+    const img = document.createElement('img');
+    img.src = media.media_url_https || media.media_url;
+    img.alt = media.alt_text || media.ext_alt_text || 'Thread image';
+    img.loading = 'lazy';
+    img.className = 'h-full w-full object-cover';
+    figure.append(img);
+    return figure;
   }
 
   return document.createDocumentFragment();
@@ -844,12 +847,20 @@ function buildThreadSequence(rootTweet, fetchedTweets = []) {
   const entries = [];
   const seen = new Set();
   let sequence = 0;
+  const rootAuthorKeys = getAuthorKeys(rootTweet);
 
-  const pushTweet = (tweet) => {
+  const pushTweet = (tweet, { allowAnyAuthor = false } = {}) => {
     if (!tweet || typeof tweet !== 'object') return;
     const id = getTweetId(tweet);
     if (!id || seen.has(id)) return;
     seen.add(id);
+
+    if (!allowAnyAuthor && rootAuthorKeys.size > 0) {
+      const authorKeys = getAuthorKeys(tweet);
+      const isSameAuthor = Array.from(authorKeys).some((key) => rootAuthorKeys.has(key));
+      if (!isSameAuthor) return;
+    }
+
     const timestamp = getTweetTimestamp(tweet);
     entries.push({
       tweet,
@@ -859,9 +870,9 @@ function buildThreadSequence(rootTweet, fetchedTweets = []) {
     });
   };
 
-  pushTweet(rootTweet);
+  pushTweet(rootTweet, { allowAnyAuthor: true });
   if (Array.isArray(fetchedTweets)) {
-    fetchedTweets.forEach(pushTweet);
+    fetchedTweets.forEach((item) => pushTweet(item));
   }
 
   entries.sort((a, b) => {
@@ -917,17 +928,92 @@ function getTweetTimestamp(tweet) {
   return Number.isNaN(value) ? null : value;
 }
 
-function collectMedia(tweet = {}) {
-  const media = [];
-  const extended = tweet.extendedEntities?.media || tweet.extended_entities?.media || [];
-  if (Array.isArray(extended)) {
-    media.push(...extended);
+function getAuthorKeys(tweet) {
+  const keys = new Set();
+  if (!tweet || typeof tweet !== 'object') return keys;
+
+  const addId = (value) => {
+    if (value === undefined || value === null) return;
+    const normalized = String(value).trim();
+    if (!normalized) return;
+    keys.add(`id:${normalized}`);
+  };
+
+  const addHandle = (value) => {
+    if (!value) return;
+    const normalized = String(value).trim().toLowerCase();
+    if (!normalized) return;
+    keys.add(`handle:${normalized}`);
+  };
+
+  const author = tweet.author || tweet.user;
+  if (author) {
+    addId(author.id ?? author.rest_id ?? author.userId ?? author.user_id ?? author.id_str);
+    addHandle(author.userName ?? author.username ?? author.screen_name ?? author.handle);
   }
-  return media;
+
+  if (tweet.legacy) {
+    addId(tweet.legacy.user_id_str);
+    addHandle(tweet.legacy.screen_name);
+  }
+
+  const coreUser = tweet.core?.user_results?.result;
+  if (coreUser) {
+    addId(coreUser.rest_id);
+    addHandle(coreUser.legacy?.screen_name);
+  }
+
+  const result = tweet.user_results?.result;
+  if (result) {
+    addId(result.rest_id);
+    addHandle(result.legacy?.screen_name);
+  }
+
+  return keys;
+}
+
+function collectMedia(tweet = {}) {
+  const collected = [];
+  const seen = new Set();
+  const sources = [
+    tweet.extendedEntities?.media,
+    tweet.extended_entities?.media,
+    tweet.entities?.media,
+    tweet.legacy?.extended_entities?.media,
+    tweet.legacy?.extendedEntities?.media,
+    tweet.legacy?.entities?.media
+  ];
+
+  sources.forEach((mediaList) => {
+    if (!Array.isArray(mediaList)) return;
+    mediaList.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      const key = item.id || item.media_key || item.mediaKey || item.media_url_https || item.media_url;
+      if (key && seen.has(key)) return;
+      if (key) seen.add(key);
+      collected.push(item);
+    });
+  });
+
+  return collected;
 }
 
 function selectVideoVariant(media) {
-  const variants = media.video_info?.variants || [];
+  const candidateSets = [
+    media.video_info?.variants,
+    media.videoInfo?.variants,
+    media.legacy?.video_info?.variants,
+    media.videoVariants,
+    media.variants,
+    media.ext?.variants
+  ].filter(Boolean);
+
+  const variants = [];
+  candidateSets.forEach((set) => {
+    if (Array.isArray(set)) {
+      variants.push(...set);
+    }
+  });
   const mp4 = variants
     .filter((variant) => variant.content_type?.includes('mp4') && variant.url)
     .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
