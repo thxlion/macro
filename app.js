@@ -572,6 +572,8 @@ function renderDetail() {
         articleWrapper.append(paragraph);
       } else if (block.type === 'link-card') {
         articleWrapper.append(createLinkPreview(block.link));
+      } else if (block.type === 'media' && Array.isArray(block.items) && block.items.length > 0) {
+        articleWrapper.append(createMediaGroup(block.items));
       }
     });
   } else {
@@ -585,67 +587,6 @@ function renderDetail() {
   }
 
   elements.detailContainer.append(articleWrapper);
-
-  const mediaItems = aggregateMediaFromTweets(tweetsForArticle);
-  if (mediaItems.length > 0) {
-    const mediaWrapper = document.createElement('div');
-    mediaWrapper.className = 'mt-6 grid gap-4 sm:grid-cols-2';
-    mediaItems.forEach((media) => {
-      if (media.type === 'photo' || media.media_url_https || media.media_url) {
-        const figure = document.createElement('figure');
-        figure.className = 'overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80';
-
-        const img = document.createElement('img');
-        img.src = media.media_url_https || media.media_url;
-        img.alt = media.alt_text || media.ext_alt_text || 'Thread image';
-        img.loading = 'lazy';
-        img.className = 'h-full w-full object-cover';
-        figure.append(img);
-        mediaWrapper.append(figure);
-      } else if (media.type === 'video' || media.type === 'animated_gif') {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'rounded-xl border border-slate-800 bg-slate-900/80 p-2';
-
-        const video = document.createElement('video');
-        video.controls = true;
-        video.preload = 'metadata';
-        video.className = 'h-full w-full rounded-lg';
-        const src = selectVideoVariant(media);
-        if (src) {
-          video.src = src;
-        }
-        if (media.type === 'animated_gif') {
-          video.loop = true;
-          video.autoplay = true;
-          video.muted = true;
-          video.playsInline = true;
-        }
-        wrapper.append(video);
-        mediaWrapper.append(wrapper);
-      }
-    });
-    elements.detailContainer.append(mediaWrapper);
-  }
-
-  const metrics = document.createElement('div');
-  metrics.className = 'mt-6 flex flex-wrap gap-3 text-xs text-slate-400';
-  const metricInfo = [
-    ['Likes', leadTweet?.likeCount],
-    ['Replies', leadTweet?.replyCount],
-    ['Retweets', leadTweet?.retweetCount],
-    ['Quotes', leadTweet?.quoteCount],
-    ['Views', leadTweet?.viewCount]
-  ];
-  metricInfo.forEach(([label, value]) => {
-    if (typeof value === 'number') {
-      const badge = document.createElement('span');
-      badge.textContent = `${label}: ${formatCount(value)}`;
-      metrics.append(badge);
-    }
-  });
-  if (metrics.children.length > 0) {
-    elements.detailContainer.append(metrics);
-  }
 
   const footer = document.createElement('div');
   footer.className = 'mt-6 flex flex-col gap-3 border-t border-slate-800/60 pt-4 sm:flex-row sm:items-center sm:justify-between';
@@ -683,18 +624,24 @@ function composeThreadContentBlocks(tweets = []) {
       const candidates = [link.url, link.expandedUrl, link.expanded_url];
       candidates.forEach((value) => {
         if (!value) return;
-        const regexp = new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regexp = new RegExp(escaped, 'g');
         processedText = processedText.replace(regexp, '').trim();
       });
     });
 
-    processedText
+    const paragraphs = processedText
       .split(/\n{2,}/)
       .map((chunk) => chunk.trim())
-      .filter(Boolean)
-      .forEach((chunk) => {
-        blocks.push({ type: 'text', text: chunk });
-      });
+      .filter(Boolean);
+
+    if (paragraphs.length === 0 && processedText.trim()) {
+      paragraphs.push(processedText.trim());
+    }
+
+    paragraphs.forEach((chunk) => {
+      blocks.push({ type: 'text', text: chunk });
+    });
 
     links.forEach((link) => {
       const card = buildLinkCardData(link);
@@ -702,8 +649,78 @@ function composeThreadContentBlocks(tweets = []) {
         blocks.push({ type: 'link-card', link: card });
       }
     });
+
+    const mediaItems = collectMedia(tweet);
+    if (Array.isArray(mediaItems) && mediaItems.length > 0) {
+      blocks.push({
+        type: 'media',
+        items: mediaItems.map((item) => ({ ...item }))
+      });
+    }
   });
   return blocks;
+}
+
+function createMediaGroup(mediaItems) {
+  if (!Array.isArray(mediaItems) || mediaItems.length === 0) {
+    return document.createDocumentFragment();
+  }
+
+  if (mediaItems.length === 1) {
+    return createSingleMediaCard(mediaItems[0]);
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/40 p-3 sm:grid-cols-2';
+  mediaItems.forEach((item) => {
+    grid.append(createSingleMediaCard(item, true));
+  });
+  return grid;
+}
+
+function createSingleMediaCard(media, isNested = false) {
+  if (!media) return document.createDocumentFragment();
+
+  if (media.type === 'photo' || media.media_url_https || media.media_url) {
+    const figure = document.createElement('figure');
+    figure.className = isNested
+      ? 'overflow-hidden rounded-xl border border-slate-800/60 bg-slate-900/70'
+      : 'overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80';
+
+    const img = document.createElement('img');
+    img.src = media.media_url_https || media.media_url;
+    img.alt = media.alt_text || media.ext_alt_text || 'Thread image';
+    img.loading = 'lazy';
+    img.className = 'h-full w-full object-cover';
+    figure.append(img);
+    return figure;
+  }
+
+  if (media.type === 'video' || media.type === 'animated_gif') {
+    const container = document.createElement('div');
+    container.className = isNested
+      ? 'rounded-xl border border-slate-800 bg-slate-900/70 p-2'
+      : 'overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-3';
+
+    const video = document.createElement('video');
+    video.controls = true;
+    video.preload = 'metadata';
+    video.className = 'h-full w-full rounded-lg';
+    const src = selectVideoVariant(media);
+    if (src) {
+      video.src = src;
+    }
+    if (media.type === 'animated_gif') {
+      video.loop = true;
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+    }
+    container.append(video);
+    return container;
+  }
+
+  return document.createDocumentFragment();
 }
 
 function createLinkPreview(link) {
@@ -729,7 +746,7 @@ function createLinkPreview(link) {
   }
 
   const imageWrapper = document.createElement('div');
-  imageWrapper.className = 'flex h-12 w-12 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/80';
+  imageWrapper.className = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/80';
 
   if (link.favicon) {
     const img = document.createElement('img');
@@ -745,26 +762,8 @@ function createLinkPreview(link) {
     imageWrapper.append(fallback);
   }
 
-  anchor.append(textColumn, imageWrapper);
+  anchor.append(imageWrapper, textColumn);
   return anchor;
-}
-
-function aggregateMediaFromTweets(tweets = []) {
-  const media = [];
-  const seen = new Set();
-  tweets.forEach((tweet) => {
-    const items = collectMedia(tweet);
-    if (!items.length) return;
-    const sourceTweetId = getTweetId(tweet);
-    items.forEach((item) => {
-      const src = item?.media_url_https || item?.media_url || item?.url;
-      const key = src || `${sourceTweetId || 'tweet'}-${item?.id || item?.media_key || media.length}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      media.push({ ...item, sourceTweetId });
-    });
-  });
-  return media;
 }
 
 function extractLinksFromTweet(tweet = {}) {
