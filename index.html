@@ -3,8 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tweet Link Saver</title>
+    <title>Macro</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      window.__FIREBASE_CONFIG__ = {
+        apiKey: "AIzaSyAv5ooc5HP1It_yrNJRL90x1CTckiMLY1c",
+        authDomain: "macro2-1ad54.firebaseapp.com",
+        projectId: "macro2-1ad54",
+        storageBucket: "macro2-1ad54.firebasestorage.app",
+        messagingSenderId: "894077057303",
+        appId: "1:894077057303:web:826c217a46798015125f52",
+        measurementId: "G-G79X63WY5R"
+      };
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="bg-slate-950 text-slate-100 min-h-screen overflow-x-hidden">
@@ -45,11 +56,49 @@
             Save Key
           </button>
         </div>
+    </div>
+    </div>
+
+    <div
+      id="authModal"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="authModalTitle"
+    >
+      <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+        <h2 id="authModalTitle" class="text-2xl font-semibold">Sign in to sync</h2>
+        <p class="mt-2 text-sm text-slate-300">Enter your email address to receive a magic link. Once signed in, your saved tweets sync across devices.</p>
+        <p id="authMessage" class="mt-3 text-sm text-amber-300 min-h-[1.25rem]" aria-live="polite"></p>
+        <label for="authEmailInput" class="sr-only">Email address</label>
+        <input
+          id="authEmailInput"
+          type="email"
+          class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+          placeholder="you@example.com"
+          autocomplete="email"
+        />
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            id="authCancelButton"
+            type="button"
+            class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+          >
+            Cancel
+          </button>
+          <button
+            id="authSubmitButton"
+            type="button"
+            class="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+          >
+            Send link
+          </button>
+        </div>
       </div>
     </div>
 
     <main class="mx-auto my-10 w-full max-w-7xl px-6 py-12 lg:px-12">
-      <h1 class="text-3xl font-semibold text-center mb-8">Tweet Link Saver</h1>
+      <h1 class="text-3xl font-semibold text-center mb-8">Macro</h1>
 
       <div class="mb-6 flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-5 py-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -58,13 +107,29 @@
             Credits remaining: <span id="creditsValue">0</span>
           </p>
         </div>
-        <button
-          id="changeKeyButton"
-          type="button"
-          class="self-start rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
-        >
-          Enter API Key
-        </button>
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <button
+            id="signInButton"
+            type="button"
+            class="hidden rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+          >
+            Sign in to sync
+          </button>
+          <button
+            id="signOutButton"
+            type="button"
+            class="hidden rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+          >
+            Sign out
+          </button>
+          <button
+            id="changeKeyButton"
+            type="button"
+            class="self-start rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+          >
+            Enter API Key
+          </button>
+        </div>
       </div>
 
       <form id="linkForm" class="space-y-3">

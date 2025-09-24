@@ -1,5 +1,21 @@
 'use strict';
 
+console.log('[app] Bootstrapping Tweet Link Saver');
+
+import {
+  setupAuthLayer,
+  subscribeToAuthChanges,
+  requestMagicLink,
+  completeSignInFromLink,
+  signOutUser
+} from './services/auth.js';
+import { setupSyncLayer, handleAuthStateChange, subscribeToSyncChanges } from './services/sync.js';
+import {
+  fetchRemoteApiKey,
+  storeRemoteApiKey,
+  deleteRemoteApiKey
+} from './services/user-store.js';
+
 const ENDPOINTS = Object.freeze({
   VERIFY: '/api/verify',
   TWEET: '/api/tweets',
@@ -35,10 +51,26 @@ const state = {
   isAuthenticating: false,
   activeTweetId: null,
   threads: {},
-  threadStatus: {}
+  threadStatus: {},
+  auth: {
+    status: 'offline-only',
+    user: null,
+    email: null,
+    available: false,
+    error: null,
+    linkSentTo: null
+  },
+  sync: {
+    status: 'disabled',
+    lastSyncedAt: null,
+    pending: 0,
+    error: null
+  },
+  keyPromptPending: false
 };
 
 const elements = {};
+let authSubmitInFlight = false;
 
 document.addEventListener('DOMContentLoaded', () => {
   cacheElements();
@@ -58,11 +90,18 @@ function cacheElements() {
     keyCredits: document.getElementById('keyCredits'),
     creditsValue: document.getElementById('creditsValue'),
     changeKeyButton: document.getElementById('changeKeyButton'),
+    signInButton: document.getElementById('signInButton'),
+    signOutButton: document.getElementById('signOutButton'),
     modal: document.getElementById('apiKeyModal'),
     apiKeyInput: document.getElementById('apiKeyInput'),
     apiKeySubmit: document.getElementById('apiKeySubmitButton'),
     apiKeyCancel: document.getElementById('apiKeyCancelButton'),
     apiKeyMessage: document.getElementById('apiKeyMessage'),
+    authModal: document.getElementById('authModal'),
+    authEmailInput: document.getElementById('authEmailInput'),
+    authSubmitButton: document.getElementById('authSubmitButton'),
+    authCancelButton: document.getElementById('authCancelButton'),
+    authMessage: document.getElementById('authMessage'),
     detailModal: document.getElementById('detailModal'),
     detailPlaceholder: document.getElementById('detailPlaceholder'),
     detailContainer: document.getElementById('detailContainer'),
@@ -105,6 +144,49 @@ function attachEventHandlers() {
     setApiKeyModal(true, { allowCancel: !!state.apiKey, presetKey: state.apiKey || '' });
   });
 
+  if (elements.signInButton) {
+    elements.signInButton.addEventListener('click', () => {
+      if (!state.auth.available) {
+        showAuthMessage('Sync is not configured for this app yet.', 'info');
+        return;
+      }
+      state.auth.error = null;
+      showAuthMessage('');
+      setAuthModal(true, { presetEmail: state.auth.email || state.auth.linkSentTo || '' });
+    });
+  }
+
+  if (elements.signOutButton) {
+    elements.signOutButton.addEventListener('click', () => {
+      signOutUser();
+    });
+  }
+
+  if (elements.authSubmitButton) {
+    elements.authSubmitButton.addEventListener('click', handleAuthSubmit);
+  }
+
+  if (elements.authCancelButton) {
+    elements.authCancelButton.addEventListener('click', () => {
+      setAuthModal(false);
+      focusTweetInput();
+    });
+  }
+
+  if (elements.authEmailInput) {
+    elements.authEmailInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleAuthSubmit();
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setAuthModal(false);
+        focusTweetInput();
+      }
+    });
+  }
+
   if (elements.detailCloseButton) {
     elements.detailCloseButton.addEventListener('click', closeDetailModal);
   }
@@ -126,6 +208,18 @@ function attachEventHandlers() {
 }
 
 function initialize() {
+  setupAuthLayer(state);
+  setupSyncLayer(state);
+  subscribeToAuthChanges((authState) => {
+    renderAuthState(authState);
+    handleAuthStateChange(authState);
+    if (authState.status === 'signed-in') {
+      refreshRemoteApiKey();
+    }
+  });
+  subscribeToSyncChanges(renderSyncState);
+  renderAuthState();
+  completeSignInFromLink().finally(() => renderAuthState());
   loadStoredItems();
   loadStoredThreads();
   removeOrphanedThreads();
@@ -141,6 +235,7 @@ function initialize() {
     authenticateKey(storedKey)
       .then(() => {
         showMessage('API key verified.', 'success');
+        state.keyPromptPending = false;
       })
       .catch((error) => {
         showMessage(error.message || 'Failed to verify stored API key.', 'error');
@@ -148,14 +243,15 @@ function initialize() {
         state.apiKey = null;
         state.credits = null;
         updateKeyStatus();
-        setApiKeyModal(true, { allowCancel: false });
+        state.keyPromptPending = true;
       })
       .finally(() => {
         setAuthenticating(false);
         updateSaveButtonState();
       });
   } else {
-    setApiKeyModal(true, { allowCancel: false });
+    state.keyPromptPending = true;
+    showMessage('Sign in to sync and add your API key.', 'info');
   }
 }
 
@@ -243,6 +339,12 @@ function persistApiKey(key) {
 
 function removeStoredApiKey() {
   localStorage.removeItem(STORAGE_KEYS.API_KEY);
+  if (state.auth.status === 'signed-in') {
+    deleteRemoteApiKey().catch((error) => {
+      console.warn('[sync] Failed to remove API key from cloud store', error);
+    });
+  }
+  state.keyPromptPending = true;
 }
 
 function updateSaveButtonState() {
@@ -434,6 +536,84 @@ function renderItems() {
     listItem.append(wrapper);
     elements.list.append(listItem);
   });
+}
+
+function renderAuthState(authState = state.auth) {
+  if (!elements.signInButton || !elements.signOutButton) return;
+
+  if (!authState?.available) {
+    elements.signInButton.classList.add('hidden');
+    elements.signInButton.disabled = true;
+    elements.signOutButton.classList.add('hidden');
+    return;
+  }
+
+  const status = authState.status;
+
+  if (status === 'signed-in' && authState.user) {
+    setAuthModal(false);
+    elements.signInButton.classList.add('hidden');
+   elements.signOutButton.classList.remove('hidden');
+    elements.signOutButton.disabled = false;
+    const email = authState.user.email || 'account';
+    elements.signOutButton.textContent = `Sign out (${email})`;
+  } else {
+    elements.signOutButton.classList.add('hidden');
+    elements.signOutButton.disabled = false;
+    elements.signInButton.classList.remove('hidden');
+
+    let buttonText = 'Sign in to sync';
+    let disabled = false;
+
+    if (status === 'initializing') {
+      buttonText = 'Checking sync...';
+      disabled = true;
+    } else if (status === 'link-sent' && authState.linkSentTo) {
+      buttonText = `Link sent to ${authState.linkSentTo}`;
+      disabled = false;
+    } else if (status === 'offline-only') {
+      buttonText = 'Sync unavailable';
+      disabled = true;
+    }
+
+    elements.signInButton.textContent = buttonText;
+    elements.signInButton.disabled = disabled;
+    if (!state.apiKey) {
+      state.keyPromptPending = true;
+    }
+  }
+
+  if (authState.error) {
+    console.warn('Sync auth error:', authState.error);
+  }
+}
+
+function renderSyncState(syncState = state.sync) {
+  if (!syncState) return;
+  // Future enhancement: surface sync status in the UI. For now we keep this hook for upcoming work.
+}
+
+async function refreshRemoteApiKey() {
+  if (state.auth.status !== 'signed-in') return;
+  try {
+    const { apiKey } = await fetchRemoteApiKey();
+    if (!apiKey || typeof apiKey !== 'string') {
+      if (state.keyPromptPending || !state.apiKey) {
+        promptForApiKey({ allowCancel: false, presetKey: state.apiKey || '', message: 'Add your twitterapi.io API key to finish signing in.' });
+      }
+      return;
+    }
+    const trimmed = apiKey.trim();
+    if (!trimmed || trimmed === state.apiKey) {
+      state.keyPromptPending = false;
+      return;
+    }
+    console.log('[sync] Applying remote API key');
+    await authenticateKey(trimmed, { skipRemoteStore: true });
+    state.keyPromptPending = false;
+  } catch (error) {
+    console.warn('[sync] Unable to refresh remote API key', error);
+  }
 }
 
 function createAvatarElement(author = {}, size = 48) {
@@ -1045,6 +1225,25 @@ function showApiKeyMessage(text, tone = 'info') {
   elements.apiKeyMessage.className = `mt-3 text-sm min-h-[1.25rem] ${palette[tone] || palette.info}`;
 }
 
+function promptForApiKey({ allowCancel = false, presetKey = '', message = 'Enter your twitterapi.io API key to finish setup.' } = {}) {
+  if (!elements.modal) return;
+  if (!elements.modal.classList.contains('hidden')) {
+    showApiKeyMessage(message, 'info');
+    state.keyPromptPending = false;
+    return;
+  }
+  setApiKeyModal(true, { allowCancel, presetKey });
+  showApiKeyMessage(message, 'info');
+  state.keyPromptPending = false;
+}
+
+function showAuthMessage(text, tone = 'info') {
+  if (!elements.authMessage) return;
+  const toneClass = palette[tone] || palette.info;
+  elements.authMessage.textContent = text;
+  elements.authMessage.className = `mt-3 text-sm min-h-[1.25rem] ${toneClass}`;
+}
+
 function setApiKeyModal(isVisible, { allowCancel = false, presetKey = '' } = {}) {
   if (isVisible) {
     elements.apiKeyInput.value = presetKey;
@@ -1059,6 +1258,29 @@ function setApiKeyModal(isVisible, { allowCancel = false, presetKey = '' } = {})
   }
 }
 
+function setAuthModal(isVisible, { presetEmail = '' } = {}) {
+  if (!elements.authModal) return;
+  if (isVisible) {
+    elements.authModal.classList.remove('hidden');
+    if (elements.authEmailInput) {
+      elements.authEmailInput.value = presetEmail;
+      setTimeout(() => elements.authEmailInput?.focus(), 0);
+    }
+    showAuthMessage('');
+  } else {
+    elements.authModal.classList.add('hidden');
+    authSubmitInFlight = false;
+    if (elements.authEmailInput) {
+      elements.authEmailInput.value = '';
+    }
+    if (elements.authSubmitButton) {
+      elements.authSubmitButton.disabled = false;
+      elements.authSubmitButton.textContent = 'Send link';
+    }
+    showAuthMessage('');
+  }
+}
+
 function setSavingState(isSaving) {
   state.isSaving = isSaving;
   elements.saveButton.textContent = isSaving ? 'Saving...' : 'Save';
@@ -1070,7 +1292,7 @@ function setAuthenticating(isAuthenticating) {
   elements.apiKeySubmit.textContent = isAuthenticating ? 'Verifying...' : 'Save Key';
 }
 
-async function authenticateKey(key) {
+async function authenticateKey(key, { skipRemoteStore = false } = {}) {
   setAuthenticating(true);
   try {
     const response = await fetch(ENDPOINTS.VERIFY, {
@@ -1092,6 +1314,11 @@ async function authenticateKey(key) {
     state.credits = typeof data?.credits === 'number' ? data.credits : null;
     persistApiKey(key);
     updateKeyStatus('success');
+    if (!skipRemoteStore && state.auth.status === 'signed-in') {
+      storeRemoteApiKey(key).catch((error) => {
+        console.warn('[sync] Failed to persist API key remotely', error);
+      });
+    }
   } finally {
     setAuthenticating(false);
     updateSaveButtonState();
@@ -1109,10 +1336,47 @@ async function handleApiKeySubmit() {
   try {
     await authenticateKey(key);
     showApiKeyMessage('API key verified.', 'success');
+    state.keyPromptPending = false;
     setApiKeyModal(false);
     focusTweetInput();
   } catch (error) {
     showApiKeyMessage(error.message || 'Unable to verify key.', 'error');
+  }
+}
+
+async function handleAuthSubmit(event) {
+  if (event) {
+    event.preventDefault();
+  }
+  if (!elements.authEmailInput || !elements.authSubmitButton) return;
+  const rawEmail = elements.authEmailInput.value.trim();
+  if (!rawEmail) {
+    showAuthMessage('Please enter your email address.', 'error');
+    return;
+  }
+  if (!state.auth.available) {
+    showAuthMessage('Sync is not configured yet.', 'error');
+    return;
+  }
+  if (authSubmitInFlight) return;
+  authSubmitInFlight = true;
+  elements.authSubmitButton.disabled = true;
+  elements.authSubmitButton.textContent = 'Sending...';
+  showAuthMessage('Sending magic link...', 'info');
+
+  try {
+    await requestMagicLink(rawEmail);
+    showAuthMessage(`Magic link sent to ${rawEmail}.`, 'success');
+  } catch (error) {
+    const message = error?.message || 'Unable to send magic link.';
+    showAuthMessage(message, 'error');
+  } finally {
+    authSubmitInFlight = false;
+    if (elements.authSubmitButton) {
+      const linkSent = state.auth.status === 'link-sent';
+      elements.authSubmitButton.disabled = false;
+      elements.authSubmitButton.textContent = linkSent ? 'Resend link' : 'Send link';
+    }
   }
 }
 
