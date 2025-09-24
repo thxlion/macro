@@ -668,9 +668,6 @@ function renderAuthState(authState = state.auth) {
     if (elements.authSummary) {
       elements.authSummary.textContent = '';
     }
-    if (state.keyPromptPending && !state.apiKey && elements.modal?.classList.contains('hidden')) {
-      promptForApiKey({ allowCancel: false });
-    }
   } else {
     hideProfileMenu();
     if (creditsBadge) creditsBadge.classList.add('hidden');
