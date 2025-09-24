@@ -71,6 +71,9 @@ const state = {
 
 const elements = {};
 let authSubmitInFlight = false;
+let contextMenuState = null;
+let undoState = null;
+let toastTimer = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   cacheElements();
@@ -86,12 +89,15 @@ function cacheElements() {
     message: document.getElementById('formMessage'),
     list: document.getElementById('linkList'),
     emptyState: document.getElementById('emptyState'),
-    keyStatus: document.getElementById('keyStatus'),
-    keyCredits: document.getElementById('keyCredits'),
-    creditsValue: document.getElementById('creditsValue'),
-    changeKeyButton: document.getElementById('changeKeyButton'),
-    signInButton: document.getElementById('signInButton'),
-    signOutButton: document.getElementById('signOutButton'),
+    creditsBadge: document.getElementById('creditsBadge'),
+    header: document.getElementById('appHeader'),
+    profileDivider: document.getElementById('profileDivider'),
+    authSummary: document.getElementById('authSummary'),
+    profileButton: document.getElementById('profileButton'),
+    profileButtonLabel: document.getElementById('profileButtonLabel'),
+    profileMenu: document.getElementById('profileMenu'),
+    profileReplaceKey: document.getElementById('profileReplaceKey'),
+    profileSignOut: document.getElementById('profileSignOut'),
     modal: document.getElementById('apiKeyModal'),
     apiKeyInput: document.getElementById('apiKeyInput'),
     apiKeySubmit: document.getElementById('apiKeySubmitButton'),
@@ -100,13 +106,18 @@ function cacheElements() {
     authModal: document.getElementById('authModal'),
     authEmailInput: document.getElementById('authEmailInput'),
     authSubmitButton: document.getElementById('authSubmitButton'),
-    authCancelButton: document.getElementById('authCancelButton'),
     authMessage: document.getElementById('authMessage'),
     detailModal: document.getElementById('detailModal'),
     detailPlaceholder: document.getElementById('detailPlaceholder'),
     detailContainer: document.getElementById('detailContainer'),
     detailCloseButton: document.getElementById('detailCloseButton'),
-    detailTitle: document.getElementById('detailTitle')
+    detailTitle: document.getElementById('detailTitle'),
+    contextMenu: document.getElementById('contextMenu'),
+    contextOpen: document.getElementById('contextOpen'),
+    contextDelete: document.getElementById('contextDelete'),
+    toast: document.getElementById('toast'),
+    toastMessage: document.getElementById('toastMessage'),
+    toastUndo: document.getElementById('toastUndo')
   });
 }
 
@@ -123,10 +134,12 @@ function attachEventHandlers() {
   });
 
   elements.apiKeySubmit.addEventListener('click', handleApiKeySubmit);
-  elements.apiKeyCancel.addEventListener('click', () => {
-    setApiKeyModal(false);
-    focusTweetInput();
-  });
+  if (elements.apiKeyCancel) {
+    elements.apiKeyCancel.addEventListener('click', () => {
+      setApiKeyModal(false);
+      focusTweetInput();
+    });
+  }
 
   elements.apiKeyInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -140,37 +153,67 @@ function attachEventHandlers() {
     }
   });
 
-  elements.changeKeyButton.addEventListener('click', () => {
-    setApiKeyModal(true, { allowCancel: !!state.apiKey, presetKey: state.apiKey || '' });
-  });
-
-  if (elements.signInButton) {
-    elements.signInButton.addEventListener('click', () => {
-      if (!state.auth.available) {
-        showAuthMessage('Sync is not configured for this app yet.', 'info');
-        return;
-      }
-      state.auth.error = null;
-      showAuthMessage('');
-      setAuthModal(true, { presetEmail: state.auth.email || state.auth.linkSentTo || '' });
+  if (elements.profileReplaceKey) {
+    elements.profileReplaceKey.addEventListener('click', () => {
+      hideProfileMenu();
+      promptForApiKey({ allowCancel: true, presetKey: state.apiKey || '', message: 'Replace your twitterapi.io API key.' });
     });
   }
 
-  if (elements.signOutButton) {
-    elements.signOutButton.addEventListener('click', () => {
+  if (elements.profileSignOut) {
+    elements.profileSignOut.addEventListener('click', () => {
+      hideProfileMenu();
       signOutUser();
     });
   }
 
-  if (elements.authSubmitButton) {
-    elements.authSubmitButton.addEventListener('click', handleAuthSubmit);
+  if (elements.profileButton) {
+    elements.profileButton.addEventListener('click', () => {
+      closeContextMenu();
+      if (state.auth.status !== 'signed-in') {
+        state.auth.error = null;
+        showAuthMessage('');
+        setAuthModal(true, { presetEmail: state.auth.email || state.auth.linkSentTo || '' });
+        return;
+      }
+      toggleProfileMenu();
+    });
   }
 
-  if (elements.authCancelButton) {
-    elements.authCancelButton.addEventListener('click', () => {
-      setAuthModal(false);
-      focusTweetInput();
+  if (elements.contextOpen) {
+    elements.contextOpen.addEventListener('click', () => {
+      const current = contextMenuState;
+      closeContextMenu();
+      if (!current?.item) return;
+      const url = current.item.url || (current.item.tweetId ? `https://twitter.com/i/web/status/${current.item.tweetId}` : null);
+      if (url) {
+        window.open(url, '_blank', 'noopener');
+      }
+      contextMenuState = null;
     });
+  }
+
+  if (elements.contextDelete) {
+    elements.contextDelete.addEventListener('click', () => {
+      const current = contextMenuState;
+      closeContextMenu();
+      if (!current?.item) return;
+      const result = deleteItem(current.item.tweetId, { silent: true });
+      renderItems();
+      renderDetail();
+      updateSaveButtonState();
+      if (result) {
+        showUndoToast(result);
+      }
+    });
+  }
+
+  if (elements.toastUndo) {
+    elements.toastUndo.addEventListener('click', undoDelete);
+  }
+
+  if (elements.authSubmitButton) {
+    elements.authSubmitButton.addEventListener('click', handleAuthSubmit);
   }
 
   if (elements.authEmailInput) {
@@ -204,7 +247,29 @@ function attachEventHandlers() {
       event.preventDefault();
       closeDetailModal();
     }
+    if (event.key === 'Escape') {
+      hideProfileMenu();
+      closeContextMenu();
+    }
   });
+
+  document.addEventListener('click', (event) => {
+    if (elements.profileMenu && !elements.profileMenu.classList.contains('hidden')) {
+      const insideButton = elements.profileButton?.contains(event.target);
+      const insideMenu = elements.profileMenu.contains(event.target);
+      if (!insideButton && !insideMenu) {
+        hideProfileMenu();
+      }
+    }
+    if (elements.contextMenu && !elements.contextMenu.classList.contains('hidden')) {
+      if (!elements.contextMenu.contains(event.target)) {
+        closeContextMenu();
+      }
+    }
+  });
+
+  window.addEventListener('scroll', closeContextMenu, true);
+  window.addEventListener('resize', closeContextMenu);
 }
 
 function initialize() {
@@ -215,6 +280,11 @@ function initialize() {
     handleAuthStateChange(authState);
     if (authState.status === 'signed-in') {
       refreshRemoteApiKey();
+    } else if (authState.available && authState.status === 'signed-out') {
+      state.keyPromptPending = true;
+      if (elements.profileButton) {
+        setAuthModal(true, { presetEmail: authState.email || authState.linkSentTo || '' });
+      }
     }
   });
   subscribeToSyncChanges(renderSyncState);
@@ -228,31 +298,7 @@ function initialize() {
   updateSaveButtonState();
   updateKeyStatus();
 
-  const storedKey = loadStoredApiKey();
-  if (storedKey) {
-    setAuthenticating(true);
-    showMessage('Verifying stored API key...', 'info');
-    authenticateKey(storedKey)
-      .then(() => {
-        showMessage('API key verified.', 'success');
-        state.keyPromptPending = false;
-      })
-      .catch((error) => {
-        showMessage(error.message || 'Failed to verify stored API key.', 'error');
-        removeStoredApiKey();
-        state.apiKey = null;
-        state.credits = null;
-        updateKeyStatus();
-        state.keyPromptPending = true;
-      })
-      .finally(() => {
-        setAuthenticating(false);
-        updateSaveButtonState();
-      });
-  } else {
-    state.keyPromptPending = true;
-    showMessage('Sign in to sync and add your API key.', 'info');
-  }
+  state.keyPromptPending = true;
 }
 
 function loadStoredItems() {
@@ -330,21 +376,23 @@ function removeOrphanedThreads() {
 }
 
 function loadStoredApiKey() {
-  return localStorage.getItem(STORAGE_KEYS.API_KEY) || null;
+  return null;
 }
 
-function persistApiKey(key) {
-  localStorage.setItem(STORAGE_KEYS.API_KEY, key);
+function persistApiKey(_key) {
+  // API key persists only in memory and is synced via the account store.
 }
 
 function removeStoredApiKey() {
-  localStorage.removeItem(STORAGE_KEYS.API_KEY);
   if (state.auth.status === 'signed-in') {
     deleteRemoteApiKey().catch((error) => {
       console.warn('[sync] Failed to remove API key from cloud store', error);
     });
   }
   state.keyPromptPending = true;
+  state.apiKey = null;
+  state.credits = null;
+  updateKeyStatus();
 }
 
 function updateSaveButtonState() {
@@ -405,7 +453,21 @@ async function handleSave(event) {
 
   setSavingState(true);
   updateSaveButtonState();
-  showMessage('Fetching tweet details...', 'info');
+  showMessage('', 'info');
+
+  const placeholderId = `pending-${Date.now()}`;
+  const placeholderItem = {
+    tweetId: placeholderId,
+    url: rawValue,
+    tweet: {
+      author: { name: 'Fetching…' },
+      text: rawValue
+    },
+    savedAt: Date.now(),
+    isPending: true
+  };
+  state.items.unshift(placeholderItem);
+  renderItems();
 
   try {
     const tweet = await fetchTweet(tweetId);
@@ -416,7 +478,12 @@ async function handleSave(event) {
       savedAt: Date.now()
     };
     const previousActiveId = state.activeTweetId;
+    const placeholderIndex = state.items.findIndex((entry) => entry.isPending && entry.tweetId === placeholderId);
+    if (placeholderIndex !== -1) {
+      state.items.splice(placeholderIndex, 1);
+    }
     state.items.unshift(newItem);
+    state.activeTweetId = previousActiveId;
     persistItems();
     renderItems();
     if (previousActiveId) {
@@ -426,6 +493,11 @@ async function handleSave(event) {
     elements.input.value = '';
     showMessage('Tweet saved.', 'success');
   } catch (error) {
+    const placeholderIndex = state.items.findIndex((entry) => entry.isPending && entry.tweetId === placeholderId);
+    if (placeholderIndex !== -1) {
+      state.items.splice(placeholderIndex, 1);
+      renderItems();
+    }
     showMessage(error.message || 'Unable to save tweet.');
   } finally {
     setSavingState(false);
@@ -434,11 +506,17 @@ async function handleSave(event) {
   }
 }
 
-function deleteItem(tweetId) {
-  state.items = state.items.filter((entry) => entry.tweetId !== tweetId);
+function deleteItem(tweetId, { silent = false } = {}) {
+  const index = state.items.findIndex((entry) => entry.tweetId === tweetId);
+  if (index === -1) return null;
+
+  const [removed] = state.items.splice(index, 1);
   persistItems();
+
+  let thread = null;
   if (tweetId) {
     if (state.threads[tweetId]) {
+      thread = state.threads[tweetId];
       delete state.threads[tweetId];
       persistThreads();
     }
@@ -446,12 +524,18 @@ function deleteItem(tweetId) {
       delete state.threadStatus[tweetId];
     }
   }
+
   if (state.activeTweetId === tweetId) {
     state.activeTweetId = null;
   }
-  renderItems();
-  renderDetail();
-  updateSaveButtonState();
+
+  if (!silent) {
+    renderItems();
+    renderDetail();
+    updateSaveButtonState();
+  }
+
+  return { item: removed, index, thread };
 }
 
 
@@ -480,26 +564,33 @@ function formatCount(value) {
 }
 
 function renderItems() {
+  closeContextMenu();
   elements.list.innerHTML = '';
   toggleEmptyState();
 
-  state.items.forEach((item) => {
+  state.items.forEach((item, index) => {
     const listItem = document.createElement('li');
 
     const wrapper = document.createElement('div');
     const isActive = state.activeTweetId === item.tweetId;
+    const isPending = Boolean(item.isPending);
     wrapper.className = [
-      'flex items-center gap-4 rounded-2xl border px-5 py-4 shadow-sm transition',
-      'border-slate-800 bg-slate-900/70 hover:border-sky-500/60 hover:bg-slate-900',
-      isActive ? 'border-sky-500/60 bg-slate-900 ring-2 ring-sky-500/20' : ''
+      'flex items-center gap-4 py-4 transition',
+      isPending ? 'pointer-events-none opacity-60 animate-pulse' : isActive ? 'bg-sky-500/10' : 'hover:bg-slate-900/60'
     ].filter(Boolean).join(' ');
 
     const selectButton = document.createElement('button');
     selectButton.type = 'button';
     selectButton.className = 'flex flex-1 items-center gap-4 overflow-hidden text-left focus:outline-none';
-    selectButton.addEventListener('click', () => selectItem(item.tweetId));
+    selectButton.style.paddingLeft = '0';
+    selectButton.style.paddingRight = '0';
+    if (!isPending) {
+      selectButton.addEventListener('click', () => selectItem(item.tweetId));
+    } else {
+      selectButton.disabled = true;
+    }
 
-    const avatar = createAvatarElement(item.tweet?.author, 56);
+    const avatar = createAvatarElement(item.tweet?.author, 48);
 
     const textColumn = document.createElement('div');
     textColumn.className = 'flex-1 min-w-0 overflow-hidden';
@@ -507,11 +598,13 @@ function renderItems() {
     const snippet = document.createElement('p');
     snippet.className = 'truncate text-sm font-medium text-slate-100';
     const firstLine = (getTweetText(item.tweet) || item.url || '').split(/\r?\n/)[0];
-    snippet.textContent = firstLine || 'Saved tweet';
+    snippet.textContent = isPending ? 'Fetching tweet…' : firstLine || 'Saved tweet';
 
     const authorLine = document.createElement('p');
     authorLine.className = 'mt-1 flex items-center gap-2 truncate text-xs text-slate-400';
-    if (item.tweet?.author) {
+    if (isPending) {
+      authorLine.textContent = 'Please wait…';
+    } else if (item.tweet?.author) {
       const { name, userName } = item.tweet.author;
       authorLine.textContent = [name || 'Unknown', userName ? `@${userName}` : null]
         .filter(Boolean)
@@ -523,28 +616,34 @@ function renderItems() {
     textColumn.append(snippet, authorLine);
     selectButton.append(avatar, textColumn);
 
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'button';
-    deleteButton.className = 'shrink-0 rounded-md border border-slate-700 px-3 py-1 text-xs text-slate-400 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50';
-    deleteButton.textContent = 'Delete';
-    deleteButton.addEventListener('click', (event) => {
-      event.stopPropagation();
-      deleteItem(item.tweetId);
-    });
-
-    wrapper.append(selectButton, deleteButton);
+    wrapper.append(selectButton);
     listItem.append(wrapper);
     elements.list.append(listItem);
+    if (!isPending) {
+      wrapper.addEventListener('contextmenu', (event) => {
+        openContextMenu(event, item, index);
+      });
+    }
   });
 }
 
 function renderAuthState(authState = state.auth) {
-  if (!elements.signInButton || !elements.signOutButton) return;
+  const profileButton = elements.profileButton;
+  const profileLabel = elements.profileButtonLabel;
+  const creditsBadge = elements.creditsBadge;
+  const profileDivider = elements.profileDivider;
+  const header = elements.header;
+  if (!profileButton) return;
+
+  if (header && authState?.available) {
+    header.classList.remove('invisible');
+  }
 
   if (!authState?.available) {
-    elements.signInButton.classList.add('hidden');
-    elements.signInButton.disabled = true;
-    elements.signOutButton.classList.add('hidden');
+    if (profileLabel) profileLabel.textContent = 'Sync unavailable';
+    setProfileButtonDisabled(true);
+    if (creditsBadge) creditsBadge.classList.add('hidden');
+    if (profileDivider) profileDivider.classList.add('hidden');
     return;
   }
 
@@ -552,34 +651,48 @@ function renderAuthState(authState = state.auth) {
 
   if (status === 'signed-in' && authState.user) {
     setAuthModal(false);
-    elements.signInButton.classList.add('hidden');
-   elements.signOutButton.classList.remove('hidden');
-    elements.signOutButton.disabled = false;
     const email = authState.user.email || 'account';
-    elements.signOutButton.textContent = `Sign out (${email})`;
-  } else {
-    elements.signOutButton.classList.add('hidden');
-    elements.signOutButton.disabled = false;
-    elements.signInButton.classList.remove('hidden');
-
-    let buttonText = 'Sign in to sync';
-    let disabled = false;
-
-    if (status === 'initializing') {
-      buttonText = 'Checking sync...';
-      disabled = true;
-    } else if (status === 'link-sent' && authState.linkSentTo) {
-      buttonText = `Link sent to ${authState.linkSentTo}`;
-      disabled = false;
-    } else if (status === 'offline-only') {
-      buttonText = 'Sync unavailable';
-      disabled = true;
+    if (profileLabel) profileLabel.textContent = email;
+    setProfileButtonDisabled(false);
+    if (creditsBadge) {
+      if (typeof state.credits === 'number') {
+        creditsBadge.textContent = `Credits ${state.credits.toLocaleString()}`;
+        creditsBadge.classList.remove('hidden');
+        if (profileDivider) profileDivider.classList.remove('hidden');
+      } else {
+        creditsBadge.classList.add('hidden');
+        if (profileDivider) profileDivider.classList.add('hidden');
+      }
     }
-
-    elements.signInButton.textContent = buttonText;
-    elements.signInButton.disabled = disabled;
+    hideProfileMenu();
+    if (elements.authSummary) {
+      elements.authSummary.textContent = '';
+    }
+    if (state.keyPromptPending && !state.apiKey && elements.modal?.classList.contains('hidden')) {
+      promptForApiKey({ allowCancel: false });
+    }
+  } else {
+    hideProfileMenu();
+    if (creditsBadge) creditsBadge.classList.add('hidden');
+    if (profileDivider) profileDivider.classList.add('hidden');
+    let label = 'Sign in';
+    setProfileButtonDisabled(false);
+    if (status === 'initializing') {
+      label = 'Checking sync…';
+      setProfileButtonDisabled(true);
+    } else if (status === 'link-sent' && authState.linkSentTo) {
+      label = `Link sent to ${authState.linkSentTo}`;
+    }
+    if (profileLabel) profileLabel.textContent = label;
     if (!state.apiKey) {
       state.keyPromptPending = true;
+    }
+    if (elements.authSummary) {
+      if (status === 'link-sent' && authState.linkSentTo) {
+        elements.authSummary.textContent = `Magic link sent to ${authState.linkSentTo}`;
+      } else {
+        elements.authSummary.textContent = '';
+      }
     }
   }
 
@@ -591,6 +704,57 @@ function renderAuthState(authState = state.auth) {
 function renderSyncState(syncState = state.sync) {
   if (!syncState) return;
   // Future enhancement: surface sync status in the UI. For now we keep this hook for upcoming work.
+}
+
+function toggleProfileMenu() {
+  if (!elements.profileMenu) return;
+  elements.profileMenu.classList.toggle('hidden');
+}
+
+function hideProfileMenu() {
+  if (!elements.profileMenu) return;
+  elements.profileMenu.classList.add('hidden');
+}
+
+function setProfileButtonDisabled(isDisabled) {
+  if (!elements.profileButton) return;
+  elements.profileButton.disabled = isDisabled;
+  elements.profileButton.classList.toggle('opacity-50', isDisabled);
+  elements.profileButton.classList.toggle('cursor-not-allowed', isDisabled);
+  elements.profileButton.classList.toggle('cursor-pointer', !isDisabled);
+}
+
+function openContextMenu(event, item, index) {
+  const menu = elements.contextMenu;
+  if (!menu) return;
+  event.preventDefault();
+  closeContextMenu();
+  hideProfileMenu();
+
+  contextMenuState = { item, index };
+  menu.classList.remove('hidden');
+  menu.style.left = '0px';
+  menu.style.top = '0px';
+  const rect = menu.getBoundingClientRect();
+  const padding = 8;
+  let left = event.clientX;
+  let top = event.clientY;
+  if (left + rect.width > window.innerWidth - padding) {
+    left = window.innerWidth - rect.width - padding;
+  }
+  if (top + rect.height > window.innerHeight - padding) {
+    top = window.innerHeight - rect.height - padding;
+  }
+  menu.style.left = `${Math.max(padding, left)}px`;
+  menu.style.top = `${Math.max(padding, top)}px`;
+}
+
+function closeContextMenu() {
+  if (!elements.contextMenu) return;
+  elements.contextMenu.classList.add('hidden');
+  elements.contextMenu.style.left = '';
+  elements.contextMenu.style.top = '';
+  contextMenuState = null;
 }
 
 async function refreshRemoteApiKey() {
@@ -1216,6 +1380,11 @@ function clearMessage() {
 }
 
 function showMessage(text, tone = 'error') {
+  if (!text) {
+    elements.message.textContent = '';
+    elements.message.className = 'text-sm min-h-[1.25rem] opacity-0 transition';
+    return;
+  }
   elements.message.textContent = text;
   elements.message.className = `text-sm min-h-[1.25rem] ${palette[tone] || palette.error}`;
 }
@@ -1235,6 +1404,48 @@ function promptForApiKey({ allowCancel = false, presetKey = '', message = 'Enter
   setApiKeyModal(true, { allowCancel, presetKey });
   showApiKeyMessage(message, 'info');
   state.keyPromptPending = false;
+}
+
+function showUndoToast({ item, index, thread }) {
+  if (!elements.toast || !elements.toastMessage) return;
+  hideToast();
+  undoState = { item, index, thread };
+  elements.toastMessage.textContent = 'Tweet deleted';
+  elements.toast.classList.remove('hidden');
+  toastTimer = setTimeout(() => {
+    hideToast();
+    undoState = null;
+  }, 5000);
+}
+
+function hideToast() {
+  if (!elements.toast) return;
+  elements.toast.classList.add('hidden');
+  if (toastTimer) {
+    clearTimeout(toastTimer);
+    toastTimer = null;
+  }
+}
+
+function undoDelete() {
+  if (!undoState) {
+    hideToast();
+    return;
+  }
+  const { item, index, thread } = undoState;
+  const insertIndex = typeof index === 'number' ? Math.min(index, state.items.length) : 0;
+  state.items.splice(insertIndex, 0, item);
+  persistItems();
+  if (thread) {
+    state.threads[item.tweetId] = thread;
+    state.threadStatus[item.tweetId] = { loading: false, error: null };
+    persistThreads();
+  }
+  renderItems();
+  renderDetail();
+  updateSaveButtonState();
+  undoState = null;
+  hideToast();
 }
 
 function showAuthMessage(text, tone = 'info') {
@@ -1283,7 +1494,6 @@ function setAuthModal(isVisible, { presetEmail = '' } = {}) {
 
 function setSavingState(isSaving) {
   state.isSaving = isSaving;
-  elements.saveButton.textContent = isSaving ? 'Saving...' : 'Save';
 }
 
 function setAuthenticating(isAuthenticating) {
@@ -1457,24 +1667,20 @@ async function loadThread(tweetId, { force = false } = {}) {
   }
 }
 
-function updateKeyStatus(tone = state.apiKey ? 'success' : 'info') {
+function updateKeyStatus() {
+  if (!elements.creditsBadge) return;
   if (!state.apiKey) {
-    elements.keyStatus.textContent = 'API key required to fetch tweets.';
-    elements.keyStatus.className = `text-sm ${palette.info}`;
-    elements.keyCredits.classList.add('hidden');
-    elements.changeKeyButton.textContent = 'Enter API Key';
+    elements.creditsBadge.classList.add('hidden');
+    if (elements.profileDivider) elements.profileDivider.classList.add('hidden');
     return;
   }
 
-  elements.keyStatus.textContent = 'Authenticated with twitterapi.io.';
-  elements.keyStatus.className = `text-sm ${palette[tone] || palette.success}`;
-
   if (typeof state.credits === 'number') {
-    elements.keyCredits.classList.remove('hidden');
-    elements.creditsValue.textContent = state.credits.toLocaleString();
+    elements.creditsBadge.textContent = `Credits ${state.credits.toLocaleString()}`;
+    elements.creditsBadge.classList.remove('hidden');
+    if (elements.profileDivider) elements.profileDivider.classList.remove('hidden');
   } else {
-    elements.keyCredits.classList.add('hidden');
+    elements.creditsBadge.classList.add('hidden');
+    if (elements.profileDivider) elements.profileDivider.classList.add('hidden');
   }
-
-  elements.changeKeyButton.textContent = 'Change API Key';
 }

@@ -149,6 +149,7 @@ export async function requestMagicLink(email) {
     } = await import('https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js');
 
     const url = new URL(window.location.origin);
+    url.searchParams.set('autotrigger', '1');
     url.searchParams.set('authEmail', encodeURIComponent(sanitized));
 
     const actionCodeSettings = {

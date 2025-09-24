@@ -24,6 +24,16 @@ const encryptionKey = encryptionSecret
   ? crypto.createHash('sha256').update(encryptionSecret).digest()
   : null;
 
+let firebaseWebConfig = null;
+try {
+  if (process.env.FIREBASE_WEB_CONFIG) {
+    firebaseWebConfig = JSON.parse(process.env.FIREBASE_WEB_CONFIG);
+  }
+} catch (error) {
+    console.warn('Unable to parse FIREBASE_WEB_CONFIG environment variable.', error);
+    firebaseWebConfig = null;
+}
+
 let firebaseApp = null;
 let firebaseAuth = null;
 let firebaseInitError = null;
@@ -31,7 +41,11 @@ let firebaseInitError = null;
 initializeFirebaseAdmin();
 
 app.use(express.json({ limit: '100kb' }));
-app.use(express.static(path.join(__dirname)));
+
+app.use((req, _res, next) => {
+  console.log('[request]', req.method, req.path);
+  next();
+});
 
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -405,6 +419,18 @@ app.delete('/api/user/api-key', authenticateFirebase, (req, res) => {
   }
   return res.status(204).send();
 });
+
+app.get('/firebase-config.js', (_req, res) => {
+  console.log('[config] Serving firebase config');
+  res.type('application/javascript');
+  if (!firebaseWebConfig) {
+    return res.send('window.__FIREBASE_CONFIG__ = null;');
+  }
+  const payload = JSON.stringify(firebaseWebConfig);
+  return res.send(`window.__FIREBASE_CONFIG__ = ${payload};`);
+});
+
+app.use(express.static(path.join(__dirname)));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });

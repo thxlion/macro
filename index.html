@@ -5,17 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Macro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      window.__FIREBASE_CONFIG__ = {
-        apiKey: "AIzaSyAv5ooc5HP1It_yrNJRL90x1CTckiMLY1c",
-        authDomain: "macro2-1ad54.firebaseapp.com",
-        projectId: "macro2-1ad54",
-        storageBucket: "macro2-1ad54.firebasestorage.app",
-        messagingSenderId: "894077057303",
-        appId: "1:894077057303:web:826c217a46798015125f52",
-        measurementId: "G-G79X63WY5R"
-      };
-    </script>
+    <script type="module" src="/firebase-config.js"></script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="bg-slate-950 text-slate-100 min-h-screen overflow-x-hidden">
@@ -78,18 +68,11 @@
           placeholder="you@example.com"
           autocomplete="email"
         />
-        <div class="mt-6 flex justify-end gap-3">
-          <button
-            id="authCancelButton"
-            type="button"
-            class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
-          >
-            Cancel
-          </button>
+        <div class="mt-6">
           <button
             id="authSubmitButton"
             type="button"
-            class="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+            class="w-full rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
           >
             Send link
           </button>
@@ -97,74 +80,84 @@
       </div>
     </div>
 
-    <main class="mx-auto my-10 w-full max-w-7xl px-6 py-12 lg:px-12">
-      <h1 class="text-3xl font-semibold text-center mb-8">Macro</h1>
-
-      <div class="mb-6 flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-5 py-4 md:flex-row md:items-center md:justify-between">
+    <main class="mx-auto w-full max-w-7xl px-6 pb-32 pt-6 lg:px-12">
+      <header class="invisible sticky top-0 z-30 flex flex-col gap-4 border-b border-slate-800/80 bg-slate-950 pb-4 pt-2 backdrop-blur sm:flex-row sm:items-center sm:justify-between" id="appHeader">
         <div>
-          <p id="keyStatus" class="text-sm text-amber-300">API key required to fetch tweets.</p>
-          <p id="keyCredits" class="hidden text-xs text-slate-400 mt-1">
-            Credits remaining: <span id="creditsValue">0</span>
-          </p>
+          <h1 class="text-xl font-semibold">Macro</h1>
         </div>
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        <div class="relative flex items-center gap-3 text-sm">
+          <span id="authSummary" class="text-xs uppercase tracking-wide text-slate-500"></span>
+          <span id="creditsBadge" class="hidden text-sm font-semibold text-slate-400"></span>
+          <span id="profileDivider" class="hidden text-slate-700">•</span>
           <button
-            id="signInButton"
+            id="profileButton"
             type="button"
-            class="hidden rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+            class="group flex items-center gap-1 text-sm font-semibold text-slate-200 transition hover:text-white focus:outline-none cursor-pointer"
           >
-            Sign in to sync
+            <span id="profileButtonLabel">Sign in</span>
+            <svg id="profileCaret" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4 text-slate-400 transition group-hover:text-white">
+              <path d="M6.47 9.72a.75.75 0 0 1 1.06 0L12 14.19l4.47-4.47a.75.75 0 1 1 1.06 1.06l-5 5a.75.75 0 0 1-1.06 0l-5-5a.75.75 0 0 1 0-1.06Z" />
+            </svg>
           </button>
-          <button
-            id="signOutButton"
-            type="button"
-            class="hidden rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+          <div
+            id="profileMenu"
+            class="absolute right-0 top-12 hidden w-44 rounded-xl border border-slate-800 bg-slate-900/95 p-2 shadow-xl"
           >
-            Sign out
-          </button>
-          <button
-            id="changeKeyButton"
-            type="button"
-            class="self-start rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
-          >
-            Enter API Key
-          </button>
+            <button
+              id="profileReplaceKey"
+              type="button"
+              class="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+            >
+              Replace API key
+            </button>
+            <button
+              id="profileSignOut"
+              type="button"
+              class="mt-1 w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20"
+            >
+              Sign out
+            </button>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <form id="linkForm" class="space-y-3">
-        <div class="flex flex-col gap-3 sm:flex-row">
-          <input
-            id="tweetInput"
-            name="tweetUrl"
-            type="url"
-            placeholder="Paste a tweet link (x.com/twitter.com)"
-            class="flex-1 rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-            autocomplete="off"
-            required
-          />
-          <button
-            id="saveButton"
-            type="submit"
-            class="rounded-lg bg-sky-500 px-5 py-3 font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
-            disabled
-          >
-            Save
-          </button>
-        </div>
-        <p id="formMessage" class="text-sm min-h-[1.25rem] text-slate-300" aria-live="polite"></p>
-      </form>
-
-      <section class="mt-10 space-y-6">
-        <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold text-slate-100">Saved tweets</h2>
-        </div>
+      <section>
         <p id="emptyState" class="rounded-2xl border border-slate-800/60 bg-slate-900/70 py-12 text-center text-slate-400 shadow-inner shadow-black/10">
           Your saved links will appear here.
         </p>
-        <ul id="linkList" class="hidden space-y-3 list-none"></ul>
+        <ul id="linkList" class="hidden list-none divide-y divide-slate-800/60"></ul>
       </section>
     </main>
+
+    <form
+      id="linkForm"
+      class="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-3xl items-center gap-3 bg-gradient-to-t from-slate-950 via-slate-950/95 to-slate-950/60 px-6 pb-8 pt-6"
+    >
+      <div class="relative flex-1">
+        <input
+          id="tweetInput"
+          name="tweetUrl"
+          type="url"
+          placeholder="Paste a tweet link (x.com/twitter.com)"
+          class="h-14 w-full rounded-[14px] border border-slate-700 bg-slate-900 px-5 pr-16 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40 truncate"
+          autocomplete="off"
+          required
+        />
+        <button
+          id="saveButton"
+          type="submit"
+          class="absolute right-1 top-1 flex h-12 w-12 items-center justify-center rounded-[14px] bg-sky-500 text-white shadow-lg transition hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          disabled
+          aria-label="Save tweet"
+        >
+          <span class="sr-only">Save tweet</span>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5">
+            <path d="M12 5.25a.75.75 0 0 1 .53.22l3.75 3.75a.75.75 0 0 1-1.06 1.06l-2.47-2.47v9.19a.75.75 0 0 1-1.5 0V7.81l-2.47 2.47a.75.75 0 1 1-1.06-1.06l3.75-3.75a.75.75 0 0 1 .53-.22Z" />
+          </svg>
+        </button>
+      </div>
+      <p id="formMessage" class="text-sm text-slate-300" aria-live="polite"></p>
+    </form>
 
     <div
       id="detailModal"
@@ -188,6 +181,42 @@
           Select a saved tweet to read the full thread.
         </div>
         <div id="detailContainer" class="hidden flex-1 space-y-6 overflow-y-auto px-6 py-6"></div>
+      </div>
+    </div>
+
+    <div
+      id="contextMenu"
+      class="hidden fixed z-50 w-48 rounded-xl border border-slate-800 bg-slate-900/95 py-1 text-sm text-slate-200 shadow-2xl"
+    >
+      <button
+        id="contextOpen"
+        type="button"
+        class="flex w-full items-center gap-2 px-4 py-2 text-left transition hover:bg-slate-800"
+      >
+        Open original tweet
+      </button>
+      <button
+        id="contextDelete"
+        type="button"
+        class="flex w-full items-center gap-2 px-4 py-2 text-left text-rose-200 transition hover:bg-rose-500/20"
+      >
+        Delete
+      </button>
+    </div>
+
+    <div
+      id="toast"
+      class="hidden fixed bottom-24 left-1/2 z-50 w-[90%] max-w-sm -translate-x-1/2 rounded-full border border-slate-700 bg-slate-900/95 px-4 py-3 text-sm text-slate-100 shadow-xl"
+    >
+      <div class="flex items-center gap-3">
+        <span id="toastMessage"></span>
+        <button
+          id="toastUndo"
+          type="button"
+          class="ml-auto text-xs font-semibold text-sky-300 transition hover:text-sky-200"
+        >
+          Undo
+        </button>
       </div>
     </div>
 
