@@ -8,17 +8,61 @@
     <script type="module" src="/firebase-config.js"></script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="bg-slate-950 text-slate-100 min-h-screen overflow-x-hidden">
+  <body class="bg-white text-[#1B1D1F] min-h-screen overflow-x-hidden">
+    <header
+      id="appHeader"
+      class="sticky top-0 z-30 flex w-full items-center justify-between bg-transparent px-8 py-6"
+    >
+      <div class="flex items-center gap-3 text-sm font-light">
+        <span class="inline-block h-3 w-3 rounded-full bg-[#1B1D1F]"></span>
+        <h1 class="text-sm font-light" id="appTitle">Macro</h1>
+      </div>
+      <div class="relative flex items-center gap-3 text-sm font-light">
+        <span id="authSummary" class="text-xs uppercase tracking-wide text-slate-500"></span>
+        <span id="creditsBadge" class="hidden text-sm font-light text-slate-500"></span>
+        <span id="profileDivider" class="hidden text-slate-300">•</span>
+        <button
+          id="profileButton"
+          type="button"
+          class="group flex items-center gap-1 text-sm font-light text-[#1B1D1F] transition hover:text-[#111315] focus:outline-none cursor-pointer"
+        >
+          <span id="profileButtonLabel">Sign in</span>
+          <svg id="profileCaret" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4 text-slate-400 transition group-hover:text-slate-600">
+            <path d="M6.47 9.72a.75.75 0 0 1 1.06 0L12 14.19l4.47-4.47a.75.75 0 1 1 1.06 1.06l-5 5a.75.75 0 0 1-1.06 0l-5-5a.75.75 0 0 1 0-1.06Z" />
+          </svg>
+        </button>
+        <div
+          id="profileMenu"
+          class="absolute right-0 top-9 hidden w-44 rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+        >
+          <button
+            id="profileReplaceKey"
+            type="button"
+            class="w-full rounded-lg px-3 py-2 text-left text-xs font-light text-[#1B1D1F] transition hover:bg-slate-100"
+          >
+            Replace API key
+          </button>
+          <button
+            id="profileSignOut"
+            type="button"
+            class="mt-1 w-full rounded-lg px-3 py-2 text-left text-xs font-light text-rose-500 transition hover:bg-rose-50"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    </header>
+
     <div
       id="apiKeyModal"
-      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur px-4"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-[rgba(27,29,31,0.55)] backdrop-blur px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="apiKeyTitle"
     >
-      <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <h2 id="apiKeyTitle" class="text-2xl font-semibold">Connect your API key</h2>
-        <p class="mt-2 text-sm text-slate-300">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <h2 id="apiKeyTitle" class="text-2xl font-light text-[#1B1D1F]">Connect your API key</h2>
+        <p class="mt-2 text-sm text-slate-600">
           Enter your twitterapi.io API key to enable saving tweets. The key is stored locally on this device.
         </p>
         <p id="apiKeyMessage" class="mt-3 text-sm text-amber-300 min-h-[1.25rem]" aria-live="polite"></p>
@@ -26,7 +70,7 @@
         <input
           id="apiKeyInput"
           type="password"
-          class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+          class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-[#1B1D1F] placeholder:text-slate-500 focus:border-[#1B1D1F] focus:outline-none focus:ring-2 focus:ring-[#1B1D1F]/30"
           placeholder="Paste your twitterapi.io API key"
           autocomplete="off"
         />
@@ -34,14 +78,14 @@
           <button
             id="apiKeyCancelButton"
             type="button"
-            class="hidden rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+            class="hidden rounded-lg border border-slate-300 px-4 py-2 text-sm font-light text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/30"
           >
             Cancel
           </button>
           <button
             id="apiKeySubmitButton"
             type="button"
-            class="rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+            class="rounded-lg bg-[#1B1D1F] px-5 py-2 text-sm font-light text-white shadow-sm transition hover:bg-[#111315] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/50"
           >
             Save Key
           </button>
@@ -51,20 +95,20 @@
 
     <div
       id="authModal"
-      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur px-4"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-[rgba(27,29,31,0.55)] backdrop-blur px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="authModalTitle"
     >
-      <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <h2 id="authModalTitle" class="text-2xl font-semibold">Sign in to sync</h2>
-        <p class="mt-2 text-sm text-slate-300">Enter your email address to receive a magic link. Once signed in, your saved tweets sync across devices.</p>
+      <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <h2 id="authModalTitle" class="text-2xl font-light text-[#1B1D1F]">Sign in to sync</h2>
+        <p class="mt-2 text-sm text-slate-600">Enter your email address to receive a magic link. Once signed in, your saved tweets sync across devices.</p>
         <p id="authMessage" class="mt-3 text-sm text-amber-300 min-h-[1.25rem]" aria-live="polite"></p>
         <label for="authEmailInput" class="sr-only">Email address</label>
         <input
           id="authEmailInput"
           type="email"
-          class="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
+          class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-[#1B1D1F] placeholder:text-slate-500 focus:border-[#1B1D1F] focus:outline-none focus:ring-2 focus:ring-[#1B1D1F]/30"
           placeholder="you@example.com"
           autocomplete="email"
         />
@@ -72,7 +116,7 @@
           <button
             id="authSubmitButton"
             type="button"
-            class="w-full rounded-lg bg-sky-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+            class="w-full rounded-lg bg-[#1B1D1F] px-5 py-2 text-sm font-light text-white shadow-sm transition hover:bg-[#111315] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/50"
           >
             Send link
           </button>
@@ -80,104 +124,68 @@
       </div>
     </div>
 
-    <main class="mx-auto w-full max-w-7xl px-6 pb-32 pt-6 lg:px-12">
-      <header class="invisible sticky top-0 z-30 flex flex-col gap-4 border-b border-slate-800/80 bg-slate-950 pb-4 pt-2 backdrop-blur sm:flex-row sm:items-center sm:justify-between" id="appHeader">
-        <div>
-          <h1 class="text-xl font-semibold">Macro</h1>
+    <main class="mx-auto w-full max-w-4xl px-8 pb-32 pt-10">
+      <div id="listMeta" class="hidden border-b border-slate-200 pb-0">
+        <div class="flex items-center justify-between text-sm font-light text-slate-500 pb-4">
+          <span id="listMetaCount">0 Articles</span>
+          <span id="listMetaAdded">Added</span>
         </div>
-        <div class="relative flex items-center gap-3 text-sm">
-          <span id="authSummary" class="text-xs uppercase tracking-wide text-slate-500"></span>
-          <span id="creditsBadge" class="hidden text-sm font-semibold text-slate-400"></span>
-          <span id="profileDivider" class="hidden text-slate-700">•</span>
-          <button
-            id="profileButton"
-            type="button"
-            class="group flex items-center gap-1 text-sm font-semibold text-slate-200 transition hover:text-white focus:outline-none cursor-pointer"
-          >
-            <span id="profileButtonLabel">Sign in</span>
-            <svg id="profileCaret" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4 text-slate-400 transition group-hover:text-white">
-              <path d="M6.47 9.72a.75.75 0 0 1 1.06 0L12 14.19l4.47-4.47a.75.75 0 1 1 1.06 1.06l-5 5a.75.75 0 0 1-1.06 0l-5-5a.75.75 0 0 1 0-1.06Z" />
-            </svg>
-          </button>
-          <div
-            id="profileMenu"
-            class="absolute right-0 top-12 hidden w-44 rounded-xl border border-slate-800 bg-slate-900/95 p-2 shadow-xl"
-          >
-            <button
-              id="profileReplaceKey"
-              type="button"
-              class="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-            >
-              Replace API key
-            </button>
-            <button
-              id="profileSignOut"
-              type="button"
-              class="mt-1 w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+      </div>
 
-      <section>
-        <p id="emptyState" class="rounded-2xl border border-slate-800/60 bg-slate-900/70 py-12 text-center text-slate-400 shadow-inner shadow-black/10">
+      <section class="pt-5">
+        <p id="emptyState" class="rounded-2xl border border-slate-200 bg-white py-12 text-center text-slate-500 shadow-inner shadow-black/5">
           Your saved links will appear here.
         </p>
-        <ul id="linkList" class="hidden list-none divide-y divide-slate-800/60"></ul>
+        <ul id="linkList" class="hidden list-none"></ul>
       </section>
     </main>
 
-    <form
-      id="linkForm"
-      class="fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-3xl items-center gap-3 bg-gradient-to-t from-slate-950 via-slate-950/95 to-slate-950/60 px-6 pb-8 pt-6"
-    >
-      <div class="relative flex-1">
+    <form id="linkForm" class="link-form">
+      <p id="formMessage" class="form-message" aria-live="polite"></p>
+      <div class="relative w-full">
         <input
           id="tweetInput"
           name="tweetUrl"
           type="url"
-          placeholder="Paste a tweet link (x.com/twitter.com)"
-          class="h-14 w-full rounded-[14px] border border-slate-700 bg-slate-900 px-5 pr-16 text-sm text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40 truncate"
+          placeholder="Paste a link from twitter ..."
+          class="link-input truncate"
           autocomplete="off"
           required
         />
         <button
           id="saveButton"
           type="submit"
-          class="absolute right-1 top-1 flex h-12 w-12 items-center justify-center rounded-[14px] bg-sky-500 text-white shadow-lg transition hover:bg-sky-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          class="link-submit"
           disabled
           aria-label="Save tweet"
         >
           <span class="sr-only">Save tweet</span>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5">
-            <path d="M12 5.25a.75.75 0 0 1 .53.22l3.75 3.75a.75.75 0 0 1-1.06 1.06l-2.47-2.47v9.19a.75.75 0 0 1-1.5 0V7.81l-2.47 2.47a.75.75 0 1 1-1.06-1.06l3.75-3.75a.75.75 0 0 1 .53-.22Z" />
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4 8L8 4M8 4L12 8M8 4V12.4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
       </div>
-      <p id="formMessage" class="text-sm text-slate-300" aria-live="polite"></p>
     </form>
 
     <div
       id="detailModal"
-      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur px-4"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-[rgba(27,29,31,0.55)] backdrop-blur px-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="detailTitle"
     >
-      <div class="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/90 shadow-2xl">
-        <div class="flex items-center justify-between border-b border-slate-800/70 bg-slate-900/80 px-6 py-4">
-          <h2 class="text-base font-semibold text-slate-100" id="detailTitle">Thread</h2>
+      <div class="relative flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
+          <h2 class="text-base font-light text-[#1B1D1F]" id="detailTitle">Thread</h2>
           <button
             id="detailCloseButton"
             type="button"
-            class="rounded-md border border-slate-700 px-3 py-1 text-sm text-slate-300 transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50"
+            class="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/30"
           >
             Close
           </button>
         </div>
-        <div id="detailPlaceholder" class="px-6 py-10 text-center text-slate-400">
+        <div id="detailPlaceholder" class="px-6 py-10 text-center text-slate-500">
           Select a saved tweet to read the full thread.
         </div>
         <div id="detailContainer" class="hidden flex-1 space-y-6 overflow-y-auto px-6 py-6"></div>
@@ -186,19 +194,19 @@
 
     <div
       id="contextMenu"
-      class="hidden fixed z-50 w-48 rounded-xl border border-slate-800 bg-slate-900/95 py-1 text-sm text-slate-200 shadow-2xl"
+      class="hidden fixed z-50 w-48 rounded-xl border border-slate-200 bg-white py-1 text-sm text-[#1B1D1F] shadow-2xl"
     >
       <button
         id="contextOpen"
         type="button"
-        class="flex w-full items-center gap-2 px-4 py-2 text-left transition hover:bg-slate-800"
+        class="flex w-full items-center gap-2 px-4 py-2 text-left transition hover:bg-slate-100"
       >
         Open original tweet
       </button>
       <button
         id="contextDelete"
         type="button"
-        class="flex w-full items-center gap-2 px-4 py-2 text-left text-rose-200 transition hover:bg-rose-500/20"
+        class="flex w-full items-center gap-2 px-4 py-2 text-left text-rose-500 transition hover:bg-rose-50"
       >
         Delete
       </button>
@@ -206,14 +214,14 @@
 
     <div
       id="toast"
-      class="hidden fixed bottom-24 left-1/2 z-50 w-[90%] max-w-sm -translate-x-1/2 rounded-full border border-slate-700 bg-slate-900/95 px-4 py-3 text-sm text-slate-100 shadow-xl"
+      class="hidden fixed bottom-24 left-1/2 z-50 w-[90%] max-w-sm -translate-x-1/2 rounded-full border border-slate-200 bg-white px-4 py-3 text-sm text-[#1B1D1F] shadow-xl"
     >
       <div class="flex items-center gap-3">
         <span id="toastMessage"></span>
         <button
           id="toastUndo"
           type="button"
-          class="ml-auto text-xs font-semibold text-sky-300 transition hover:text-sky-200"
+          class="ml-auto text-xs font-light text-[#1B1D1F] transition hover:text-[#111315]"
         >
           Undo
         </button>

@@ -37,10 +37,10 @@ const STORAGE_KEYS = Object.freeze({
 });
 
 const palette = Object.freeze({
-  error: 'text-pink-400',
-  info: 'text-amber-300',
-  success: 'text-emerald-300',
-  neutral: 'text-slate-300'
+  error: 'text-rose-500',
+  info: 'text-amber-600',
+  success: 'text-emerald-600',
+  neutral: 'text-slate-600'
 });
 
 const state = {
@@ -117,7 +117,10 @@ function cacheElements() {
     contextDelete: document.getElementById('contextDelete'),
     toast: document.getElementById('toast'),
     toastMessage: document.getElementById('toastMessage'),
-    toastUndo: document.getElementById('toastUndo')
+    toastUndo: document.getElementById('toastUndo'),
+    listMeta: document.getElementById('listMeta'),
+    listMetaCount: document.getElementById('listMetaCount'),
+    listMetaAdded: document.getElementById('listMetaAdded')
   });
 }
 
@@ -299,6 +302,10 @@ function initialize() {
   updateKeyStatus();
 
   state.keyPromptPending = true;
+
+  if (elements.message) {
+    elements.message.classList.add('hidden');
+  }
 }
 
 function loadStoredItems() {
@@ -400,6 +407,12 @@ function updateSaveButtonState() {
   const tweetId = extractTweetId(value);
   const disabled = !tweetId || !state.apiKey || state.isSaving || state.isAuthenticating;
   elements.saveButton.disabled = disabled;
+  if (!elements.saveButton) return;
+  if (!tweetId || state.isSaving || state.isAuthenticating) {
+    elements.saveButton.classList.remove('is-visible');
+  } else {
+    elements.saveButton.classList.add('is-visible');
+  }
   if (!tweetId && value) {
     showMessage('Please enter a valid tweet link from x.com or twitter.com.');
   } else {
@@ -556,6 +569,20 @@ function formatDate(value) {
   }
 }
 
+function formatDateShort(value) {
+  if (!value) return '';
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch (error) {
+    return '';
+  }
+}
+
 function formatCount(value) {
   if (typeof value !== 'number') return '0';
   if (value < 1000) return String(value);
@@ -567,6 +594,7 @@ function renderItems() {
   closeContextMenu();
   elements.list.innerHTML = '';
   toggleEmptyState();
+  updateListMeta();
 
   state.items.forEach((item, index) => {
     const listItem = document.createElement('li');
@@ -575,13 +603,14 @@ function renderItems() {
     const isActive = state.activeTweetId === item.tweetId;
     const isPending = Boolean(item.isPending);
     wrapper.className = [
-      'flex items-center gap-4 py-4 transition',
-      isPending ? 'pointer-events-none opacity-60 animate-pulse' : isActive ? 'bg-sky-500/10' : 'hover:bg-slate-900/60'
+      'list-item',
+      isPending ? 'list-item--pending' : null,
+      isActive ? 'list-item--selected' : null
     ].filter(Boolean).join(' ');
 
     const selectButton = document.createElement('button');
     selectButton.type = 'button';
-    selectButton.className = 'flex flex-1 items-center gap-4 overflow-hidden text-left focus:outline-none';
+    selectButton.className = 'list-item__button focus:outline-none';
     selectButton.style.paddingLeft = '0';
     selectButton.style.paddingRight = '0';
     if (!isPending) {
@@ -590,31 +619,35 @@ function renderItems() {
       selectButton.disabled = true;
     }
 
-    const avatar = createAvatarElement(item.tweet?.author, 48);
+    const avatar = createAvatarElement(item.tweet?.author, 20);
+    avatar.classList.add('list-item__avatar');
 
     const textColumn = document.createElement('div');
-    textColumn.className = 'flex-1 min-w-0 overflow-hidden';
+    textColumn.className = 'list-item__text';
 
     const snippet = document.createElement('p');
-    snippet.className = 'truncate text-sm font-medium text-slate-100';
+    snippet.className = 'list-item__title truncate';
     const firstLine = (getTweetText(item.tweet) || item.url || '').split(/\r?\n/)[0];
     snippet.textContent = isPending ? 'Fetching tweet…' : firstLine || 'Saved tweet';
 
     const authorLine = document.createElement('p');
-    authorLine.className = 'mt-1 flex items-center gap-2 truncate text-xs text-slate-400';
+    authorLine.className = 'list-item__subtitle truncate';
     if (isPending) {
       authorLine.textContent = 'Please wait…';
     } else if (item.tweet?.author) {
-      const { name, userName } = item.tweet.author;
-      authorLine.textContent = [name || 'Unknown', userName ? `@${userName}` : null]
-        .filter(Boolean)
-        .join(' · ');
+      const { name } = item.tweet.author;
+      authorLine.textContent = name ? `By ${name}` : 'By Unknown';
     } else {
-      authorLine.textContent = 'Unknown author';
+      authorLine.textContent = 'By Unknown';
     }
 
     textColumn.append(snippet, authorLine);
-    selectButton.append(avatar, textColumn);
+
+    const dateLabel = document.createElement('span');
+    dateLabel.className = 'list-item__date whitespace-nowrap';
+    dateLabel.textContent = !isPending && item.savedAt ? formatDateShort(item.savedAt) : '';
+
+    selectButton.append(avatar, textColumn, dateLabel);
 
     wrapper.append(selectButton);
     listItem.append(wrapper);
@@ -791,7 +824,7 @@ function createAvatarElement(author = {}, size = 48) {
   }
 
   const fallback = document.createElement('div');
-  fallback.className = 'flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-sm font-semibold text-slate-300';
+  fallback.className = 'flex items-center justify-center rounded-full bg-slate-200 text-sm font-light text-slate-600';
   fallback.textContent = author?.name?.[0]?.toUpperCase() || '?';
   fallback.style.width = dimension;
   fallback.style.height = dimension;
@@ -853,20 +886,20 @@ function renderDetail() {
   }
 
   const header = document.createElement('div');
-  header.className = 'flex items-start gap-3 border-b border-slate-800/60 pb-4';
+  header.className = 'flex items-start gap-3 border-b border-slate-200 pb-4';
   header.append(createAvatarElement(leadTweet?.author, 64));
 
   const identity = document.createElement('div');
   identity.className = 'space-y-1';
 
   const nameLine = document.createElement('p');
-  nameLine.className = 'text-base font-semibold text-slate-100';
+  nameLine.className = 'text-base font-light text-[#1B1D1F]';
   nameLine.textContent = leadTweet?.author?.name || 'Unknown';
   identity.append(nameLine);
 
   if (leadTweet?.author?.userName) {
     const username = document.createElement('p');
-    username.className = 'text-sm text-slate-400';
+    username.className = 'text-sm text-slate-500';
     username.textContent = `@${leadTweet.author.userName}`;
     identity.append(username);
   }
@@ -881,7 +914,7 @@ function renderDetail() {
 
   if (status.loading && (!cachedThread || !cachedThread.tweets?.length)) {
     const loadingMessage = document.createElement('p');
-    loadingMessage.className = 'mt-6 text-sm text-slate-400';
+    loadingMessage.className = 'mt-6 text-sm text-slate-500';
     loadingMessage.textContent = 'Loading full thread...';
     elements.detailContainer.append(loadingMessage);
     return;
@@ -894,7 +927,7 @@ function renderDetail() {
 
     const retryButton = document.createElement('button');
     retryButton.type = 'button';
-    retryButton.className = 'mt-3 rounded-md border border-sky-500 px-3 py-1 text-xs font-semibold text-sky-300 transition hover:bg-sky-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50';
+    retryButton.className = 'mt-3 rounded-md border border-[#1B1D1F] px-3 py-1 text-xs font-light text-[#1B1D1F] transition hover:bg-[rgba(27,29,31,0.1)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/40';
     retryButton.textContent = 'Retry';
     retryButton.addEventListener('click', () => loadThread(item.tweetId, { force: true }));
     errorWrapper.append(retryButton);
@@ -904,7 +937,7 @@ function renderDetail() {
   }
 
   const articleWrapper = document.createElement('div');
-  articleWrapper.className = 'mt-4 space-y-4 text-sm leading-relaxed text-slate-100 sm:text-base';
+  articleWrapper.className = 'mt-4 space-y-4 text-sm leading-relaxed text-[#1B1D1F] sm:text-base';
 
   const contentBlocks = composeThreadContentBlocks(tweetsForArticle);
   if (contentBlocks.length > 0) {
@@ -933,7 +966,7 @@ function renderDetail() {
   elements.detailContainer.append(articleWrapper);
 
   const footer = document.createElement('div');
-  footer.className = 'mt-6 flex flex-col gap-3 border-t border-slate-800/60 pt-4 sm:flex-row sm:items-center sm:justify-between';
+  footer.className = 'mt-6 flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-center sm:justify-between';
 
   if (cachedThread?.fetchedAt) {
     const formatted = formatDate(cachedThread.fetchedAt);
@@ -949,7 +982,7 @@ function renderDetail() {
   viewButton.href = item.url;
   viewButton.target = '_blank';
   viewButton.rel = 'noopener noreferrer';
-  viewButton.className = 'rounded-md border border-sky-500 px-4 py-2 text-sm font-semibold text-sky-300 transition hover:bg-sky-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50';
+  viewButton.className = 'rounded-md border border-[#1B1D1F] px-4 py-2 text-sm font-light text-[#1B1D1F] transition hover:bg-[rgba(27,29,31,0.08)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/40';
   viewButton.textContent = 'View original tweet';
   footer.append(viewButton);
 
@@ -1015,7 +1048,7 @@ function createMediaGroup(mediaItems) {
   }
 
   const grid = document.createElement('div');
-  grid.className = 'grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/40 p-3 sm:grid-cols-2';
+  grid.className = 'grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2';
   mediaItems.forEach((item) => {
     grid.append(createSingleMediaCard(item, true));
   });
@@ -1028,8 +1061,8 @@ function createSingleMediaCard(media, isNested = false) {
   if (media.type === 'video' || media.type === 'animated_gif') {
     const container = document.createElement('div');
     container.className = isNested
-      ? 'rounded-xl border border-slate-800 bg-slate-900/70 p-2'
-      : 'overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-3';
+      ? 'rounded-xl border border-slate-200 bg-white p-2'
+      : 'overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-3';
 
     const video = document.createElement('video');
     video.controls = true;
@@ -1052,8 +1085,8 @@ function createSingleMediaCard(media, isNested = false) {
   if (media.type === 'photo' || media.media_url_https || media.media_url) {
     const figure = document.createElement('figure');
     figure.className = isNested
-      ? 'overflow-hidden rounded-xl border border-slate-800/60 bg-slate-900/70'
-      : 'overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80';
+      ? 'overflow-hidden rounded-xl border border-slate-200 bg-white'
+      : 'overflow-hidden rounded-2xl border border-slate-200 bg-slate-50';
 
     const img = document.createElement('img');
     img.src = media.media_url_https || media.media_url;
@@ -1072,25 +1105,25 @@ function createLinkPreview(link) {
   anchor.href = link.href || link.url;
   anchor.target = '_blank';
   anchor.rel = 'noopener noreferrer';
-  anchor.className = 'flex items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 transition hover:border-sky-500/40 hover:bg-slate-900';
+  anchor.className = 'flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-[#1B1D1F]/40 hover:bg-slate-50';
 
   const textColumn = document.createElement('div');
   textColumn.className = 'flex min-w-0 flex-1 flex-col';
 
   const titleElement = document.createElement('p');
-  titleElement.className = 'truncate text-sm font-semibold text-slate-100 sm:text-base';
+  titleElement.className = 'truncate text-sm font-light text-[#1B1D1F] sm:text-base';
   titleElement.textContent = link.title;
   textColumn.append(titleElement);
 
   if (link.displayUrl) {
     const urlElement = document.createElement('p');
-    urlElement.className = 'mt-1 truncate text-xs text-slate-400';
+    urlElement.className = 'mt-1 truncate text-xs text-slate-500';
     urlElement.textContent = link.displayUrl;
     textColumn.append(urlElement);
   }
 
   const imageWrapper = document.createElement('div');
-  imageWrapper.className = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/80';
+  imageWrapper.className = 'flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50';
 
   if (link.favicon) {
     const img = document.createElement('img');
@@ -1101,7 +1134,7 @@ function createLinkPreview(link) {
     imageWrapper.append(img);
   } else if (link.domainInitial) {
     const fallback = document.createElement('span');
-    fallback.className = 'text-sm font-semibold text-slate-400';
+    fallback.className = 'text-sm font-light text-slate-500';
     fallback.textContent = link.domainInitial;
     imageWrapper.append(fallback);
   }
@@ -1365,6 +1398,16 @@ function toggleEmptyState() {
   const hasItems = state.items.length > 0;
   elements.emptyState.classList.toggle('hidden', hasItems);
   elements.list.classList.toggle('hidden', !hasItems);
+  if (elements.listMeta) {
+    elements.listMeta.classList.toggle('hidden', !hasItems);
+  }
+}
+
+function updateListMeta() {
+  if (!elements.listMetaCount) return;
+  const count = state.items.length;
+  const label = count === 1 ? 'Article' : 'Articles';
+  elements.listMetaCount.textContent = `${count} ${label}`;
 }
 
 function focusTweetInput() {
@@ -1372,18 +1415,19 @@ function focusTweetInput() {
 }
 
 function clearMessage() {
+  if (!elements.message) return;
   elements.message.textContent = '';
-  elements.message.className = `text-sm min-h-[1.25rem] ${palette.neutral}`;
+  elements.message.className = 'form-message hidden';
 }
 
 function showMessage(text, tone = 'error') {
+  if (!elements.message) return;
   if (!text) {
-    elements.message.textContent = '';
-    elements.message.className = 'text-sm min-h-[1.25rem] opacity-0 transition';
+    clearMessage();
     return;
   }
   elements.message.textContent = text;
-  elements.message.className = `text-sm min-h-[1.25rem] ${palette[tone] || palette.error}`;
+  elements.message.className = `form-message ${palette[tone] || palette.error}`;
 }
 
 function showApiKeyMessage(text, tone = 'info') {

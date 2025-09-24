@@ -3,14 +3,216 @@
   Tailwind handles layout; this file keeps base tweaks together.
 */
 
+@font-face {
+  font-family: 'Open Runde';
+  src: url('https://cdn.jsdelivr.net/gh/lauridskern/open-runde@main/src/web/OpenRunde-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Runde';
+  src: url('https://cdn.jsdelivr.net/gh/lauridskern/open-runde@main/src/web/OpenRunde-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Open Runde';
+  src: url('https://cdn.jsdelivr.net/gh/lauridskern/open-runde@main/src/web/OpenRunde-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Open Runde', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: #ffffff;
+  color: #1B1D1F;
 }
 
 button:disabled {
   opacity: 0.7;
+}
+
+.form-message {
+  min-height: 1.25rem;
+  font-size: 14px;
+  margin-bottom: 12px;
+  transition: opacity 0.2s ease;
+  text-align: center;
+}
+
+.link-input {
+  width: 100%;
+  height: 52px;
+  border-radius: 11px;
+  border: 1px solid rgba(27, 29, 31, 0.08);
+  box-shadow: 0 1px 3px rgba(27, 29, 31, 0.06);
+  padding: 0 52px 0 16px;
+  font-size: 16px;
+  line-height: 1;
+  color: #1B1D1F;
+  background-color: #FFFFFF;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.link-input::placeholder {
+  color: rgba(27, 29, 31, 0.4);
+}
+
+.link-input:focus {
+  border-color: rgba(27, 29, 31, 0.2);
+  box-shadow: 0 1px 3px rgba(27, 29, 31, 0.06);
+  outline: none;
+}
+
+.link-submit {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  height: 28px;
+  width: 28px;
+  border-radius: 50%;
+  background-color: #1B1D1F;
+  color: #ffffff;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(27, 29, 31, 0.10);
+}
+
+.link-submit:hover:not(:disabled) {
+  background-color: #111315;
+}
+
+.link-submit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(27, 29, 31, 0.18);
+}
+
+.link-submit:disabled {
+  background-color: rgba(27, 29, 31, 0.12);
+  color: rgba(27, 29, 31, 0.35);
+  cursor: not-allowed;
+}
+
+.link-submit svg {
+  width: 16px;
+  height: 16px;
+}
+
+.link-submit.is-visible {
+  display: flex;
+}
+
+.link-form {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 768px;
+  margin: 0 auto;
+  padding: 24px 24px 32px;
+}
+
+
+.list-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin: 0 -14px;
+  border-radius: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.list-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background-color: transparent;
+  transition: background-color 0.2s ease;
+  z-index: 0;
+}
+
+.list-item:hover::after {
+  background-color: rgba(27, 29, 31, 0.03);
+}
+
+.list-item--selected::after {
+  background-color: rgba(27, 29, 31, 0.05);
+}
+
+.list-item--pending {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.list-item + .list-item {
+  margin-top: 6px;
+}
+
+
+.list-item__button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+.list-item__title {
+  font-size: 14px;
+  font-weight: 300;
+  color: #1B1D1F;
+  margin: 0;
+}
+
+.list-item__subtitle {
+  font-size: 14px;
+  font-weight: 300;
+  color: rgba(27, 29, 31, 0.55);
+  margin-top: -1px;
+  margin-bottom: 0;
+}
+
+.list-item__date {
+  font-size: 14px;
+  font-weight: 300;
+  color: rgba(27, 29, 31, 0.55);
+  justify-self: end;
+  align-self: start;
+}
+.list-item__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+  justify-content: flex-start;
+}
+.list-item__avatar {
+  margin-top: 3px;
 }
