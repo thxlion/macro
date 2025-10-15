@@ -37,6 +37,207 @@ body {
   color: #1B1D1F;
 }
 
+
+.macro-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 48px 24px 80px;
+  background-color: #ffffff;
+  overflow-y: auto;
+}
+
+.macro-screen__content {
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.macro-screen__footnote {
+  position: absolute;
+  bottom: 40px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: rgba(27, 29, 31, 0.45);
+}
+
+.macro-modal {
+  position: relative;
+  width: 100%;
+  text-align: center;
+}
+
+.macro-modal__icon,
+.macro-modal__icon-wrapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 28px;
+}
+
+.macro-modal__icon {
+  width: 24px;
+  height: 24px;
+}
+
+.macro-modal__icon-wrapper {
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.macro-modal__icon-wrapper--image {
+  background-color: transparent;
+  width: auto;
+  height: auto;
+  margin-bottom: 32px;
+}
+
+.macro-icon-dot {
+  display: inline-block;
+  border-radius: 9999px;
+}
+
+.macro-icon-dot--primary {
+  width: 12px;
+  height: 12px;
+  background-color: #1B1D1F;
+}
+
+.macro-icon-dot--secondary {
+  width: 28px;
+  height: 28px;
+  background-color: rgba(27, 29, 31, 0.08);
+}
+
+.macro-modal__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background-color: #1B1D1F;
+}
+
+.macro-modal__title {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.macro-modal__description {
+  margin-top: 10px;
+  margin-bottom: 32px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(27, 29, 31, 0.62);
+}
+
+.macro-modal__link {
+  color: #1B1D1F;
+  text-decoration: underline;
+}
+
+.macro-modal__field {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.macro-input {
+  width: 100%;
+  height: 52px;
+  border-radius: 14px;
+  border: none;
+  background-color: #f4f4f5;
+  padding: 0 18px;
+  font-size: 16px;
+  color: #1B1D1F;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.macro-input::placeholder {
+  color: rgba(27, 29, 31, 0.35);
+}
+
+.macro-input:focus {
+  outline: none;
+  border-color: rgba(27, 29, 31, 0.25);
+  background-color: rgba(244, 244, 245, 0.96);
+}
+
+.macro-input--error {
+  border-color: rgba(240, 68, 56, 0.75) !important;
+  background-color: rgba(240, 68, 56, 0.08);
+}
+
+.macro-input--error::placeholder {
+  color: rgba(240, 68, 56, 0.65);
+}
+
+.macro-button {
+  width: 100%;
+  margin-top: 10px;
+  height: 52px;
+  border-radius: 14px;
+  background-color: #1B1D1F;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 500;
+  border: none;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.macro-button:hover:not(:disabled) {
+  background-color: #111315;
+}
+
+.macro-button:disabled {
+  background-color: #c4c4c7;
+  color: rgba(27, 29, 31, 0.55);
+  cursor: not-allowed;
+}
+
+.macro-button--ghost {
+  background-color: transparent;
+  color: rgba(27, 29, 31, 0.55);
+  border: 1px solid rgba(27, 29, 31, 0.16);
+  margin-top: 12px;
+}
+
+.macro-button--ghost:hover:not(:disabled) {
+  background-color: rgba(27, 29, 31, 0.06);
+}
+
+.macro-modal__message {
+  min-height: 18px;
+  margin-top: 18px;
+  font-size: 14px;
+  color: rgba(27, 29, 31, 0.55);
+}
+
+.macro-modal__message--error {
+  color: #f04438;
+}
+
+.macro-modal__message--success {
+  color: #15803d;
+}
+
+.macro-modal__message--info {
+  color: rgba(27, 29, 31, 0.55);
+}
+
+.macro-modal__highlight {
+  font-weight: 500;
+  color: #1B1D1F;
+}
+
 button:disabled {
   opacity: 0.7;
 }

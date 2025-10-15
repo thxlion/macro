@@ -55,73 +55,81 @@
 
     <div
       id="apiKeyModal"
-      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-[rgba(27,29,31,0.55)] backdrop-blur px-4"
+      class="macro-screen hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="apiKeyTitle"
     >
-      <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-        <h2 id="apiKeyTitle" class="text-2xl font-light text-[#1B1D1F]">Connect your API key</h2>
-        <p class="mt-2 text-sm text-slate-600">
-          Enter your twitterapi.io API key to enable saving tweets. The key is stored locally on this device.
+      <div class="macro-screen__content" role="document">
+        <img src="./assets/lock.svg" alt="Lock icon" class="macro-modal__icon" />
+        <h2 id="apiKeyTitle" class="macro-modal__title">Enter your API Key</h2>
+        <p class="macro-modal__description">
+          Macro uses the <a href="https://www.twitterapi.io" target="_blank" rel="noopener" class="macro-modal__link">www.twitterapi.io</a> key to fetch your tweets. Provide your API key to get started.
         </p>
-        <p id="apiKeyMessage" class="mt-3 text-sm text-amber-300 min-h-[1.25rem]" aria-live="polite"></p>
-        <label for="apiKeyInput" class="sr-only">twitterapi.io API key</label>
-        <input
-          id="apiKeyInput"
-          type="password"
-          class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-[#1B1D1F] placeholder:text-slate-500 focus:border-[#1B1D1F] focus:outline-none focus:ring-2 focus:ring-[#1B1D1F]/30"
-          placeholder="Paste your twitterapi.io API key"
-          autocomplete="off"
-        />
-        <div class="mt-6 flex justify-end gap-3">
-          <button
-            id="apiKeyCancelButton"
-            type="button"
-            class="hidden rounded-lg border border-slate-300 px-4 py-2 text-sm font-light text-slate-600 transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/30"
-          >
-            Cancel
-          </button>
-          <button
-            id="apiKeySubmitButton"
-            type="button"
-            class="rounded-lg bg-[#1B1D1F] px-5 py-2 text-sm font-light text-white shadow-sm transition hover:bg-[#111315] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/50"
-          >
-            Save Key
-          </button>
+        <div class="macro-modal__field">
+          <label for="apiKeyInput" class="sr-only">twitterapi.io API key</label>
+          <input
+            id="apiKeyInput"
+            type="password"
+            class="macro-input"
+            placeholder="API Key"
+            autocomplete="off"
+          />
         </div>
-    </div>
+        <button
+          id="apiKeySubmitButton"
+          type="button"
+          class="macro-button"
+        >
+          Continue
+        </button>
+        <p id="apiKeyMessage" class="macro-modal__message" aria-live="polite"></p>
+        <button
+          id="apiKeyCancelButton"
+          type="button"
+          class="macro-button macro-button--ghost hidden"
+        >
+          Cancel
+        </button>
+      </div>
+      <p class="macro-screen__footnote">Alpha Build 0.2</p>
     </div>
 
     <div
       id="authModal"
-      class="hidden fixed inset-0 z-50 flex items-center justify-center bg-[rgba(27,29,31,0.55)] backdrop-blur px-4"
+      class="macro-screen hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="authModalTitle"
     >
-      <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-        <h2 id="authModalTitle" class="text-2xl font-light text-[#1B1D1F]">Sign in to sync</h2>
-        <p class="mt-2 text-sm text-slate-600">Enter your email address to receive a magic link. Once signed in, your saved tweets sync across devices.</p>
-        <p id="authMessage" class="mt-3 text-sm text-amber-300 min-h-[1.25rem]" aria-live="polite"></p>
-        <label for="authEmailInput" class="sr-only">Email address</label>
-        <input
-          id="authEmailInput"
-          type="email"
-          class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-[#1B1D1F] placeholder:text-slate-500 focus:border-[#1B1D1F] focus:outline-none focus:ring-2 focus:ring-[#1B1D1F]/30"
-          placeholder="you@example.com"
-          autocomplete="email"
-        />
-        <div class="mt-6">
-          <button
-            id="authSubmitButton"
-            type="button"
-            class="w-full rounded-lg bg-[#1B1D1F] px-5 py-2 text-sm font-light text-white shadow-sm transition hover:bg-[#111315] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1B1D1F]/50"
-          >
-            Send link
-          </button>
+      <div class="macro-screen__content" role="document">
+        <div id="authModalIcon" class="macro-modal__icon-wrapper">
+          <span class="macro-modal__dot" aria-hidden="true"></span>
         </div>
+        <h2 id="authModalTitle" class="macro-modal__title">Sign in to sync</h2>
+        <p id="authModalDescription" class="macro-modal__description">
+          Macro turns your favorite tweets into articles. Sign in to sync saved threads across devices.
+        </p>
+        <div id="authFormFields" class="macro-modal__field">
+          <label for="authEmailInput" class="sr-only">Email address</label>
+          <input
+            id="authEmailInput"
+            type="email"
+            class="macro-input"
+            placeholder="Email"
+            autocomplete="email"
+          />
+        </div>
+        <button
+          id="authSubmitButton"
+          type="button"
+          class="macro-button"
+        >
+          Send Magic Email
+        </button>
+        <p id="authMessage" class="macro-modal__message" aria-live="polite"></p>
       </div>
+      <p class="macro-screen__footnote">Alpha Build 0.2</p>
     </div>
 
     <main class="mx-auto w-full max-w-4xl px-8 pb-32 pt-10">

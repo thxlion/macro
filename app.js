@@ -79,6 +79,8 @@ document.addEventListener('DOMContentLoaded', () => {
   cacheElements();
   attachEventHandlers();
   initialize();
+  setAuthModal(true);
+  syncChromeVisibility();
 });
 
 function cacheElements() {
@@ -104,6 +106,10 @@ function cacheElements() {
     apiKeyCancel: document.getElementById('apiKeyCancelButton'),
     apiKeyMessage: document.getElementById('apiKeyMessage'),
     authModal: document.getElementById('authModal'),
+    authModalIcon: document.getElementById('authModalIcon'),
+    authModalTitle: document.getElementById('authModalTitle'),
+    authModalDescription: document.getElementById('authModalDescription'),
+    authFormFields: document.getElementById('authFormFields'),
     authEmailInput: document.getElementById('authEmailInput'),
     authSubmitButton: document.getElementById('authSubmitButton'),
     authMessage: document.getElementById('authMessage'),
@@ -143,6 +149,10 @@ function attachEventHandlers() {
       focusTweetInput();
     });
   }
+
+  elements.apiKeyInput.addEventListener('input', () => {
+    updateApiKeyButtonState();
+  });
 
   elements.apiKeyInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -220,6 +230,9 @@ function attachEventHandlers() {
   }
 
   if (elements.authEmailInput) {
+    elements.authEmailInput.addEventListener('input', () => {
+      updateAuthButtonState();
+    });
     elements.authEmailInput.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -666,6 +679,7 @@ function renderAuthState(authState = state.auth) {
   const creditsBadge = elements.creditsBadge;
   const profileDivider = elements.profileDivider;
   const header = elements.header;
+  updateAuthModalView(authState);
   if (!profileButton) return;
 
   if (header && authState?.available) {
@@ -793,7 +807,7 @@ async function refreshRemoteApiKey() {
     const { apiKey } = await fetchRemoteApiKey();
     if (!apiKey || typeof apiKey !== 'string') {
       if (state.keyPromptPending || !state.apiKey) {
-        promptForApiKey({ allowCancel: false, presetKey: state.apiKey || '', message: 'Add your twitterapi.io API key to finish signing in.' });
+        promptForApiKey({ allowCancel: false, presetKey: state.apiKey || '' });
       }
       return;
     }
@@ -1431,19 +1445,38 @@ function showMessage(text, tone = 'error') {
 }
 
 function showApiKeyMessage(text, tone = 'info') {
+  if (!elements.apiKeyMessage) return;
   elements.apiKeyMessage.textContent = text;
-  elements.apiKeyMessage.className = `mt-3 text-sm min-h-[1.25rem] ${palette[tone] || palette.info}`;
+  let toneClass = 'macro-modal__message--info';
+  if (tone === 'error') toneClass = 'macro-modal__message--error';
+  if (tone === 'success') toneClass = 'macro-modal__message--success';
+  elements.apiKeyMessage.className = `macro-modal__message ${toneClass}`;
+  if (elements.apiKeyInput) {
+    if (tone === 'error') {
+      elements.apiKeyInput.classList.add('macro-input--error');
+    } else {
+      elements.apiKeyInput.classList.remove('macro-input--error');
+    }
+  }
 }
 
-function promptForApiKey({ allowCancel = false, presetKey = '', message = 'Enter your twitterapi.io API key to finish setup.' } = {}) {
+function promptForApiKey({ allowCancel = false, presetKey = '', message = '' } = {}) {
   if (!elements.modal) return;
   if (!elements.modal.classList.contains('hidden')) {
-    showApiKeyMessage(message, 'info');
+    if (message) {
+      showApiKeyMessage(message, 'info');
+    } else {
+      showApiKeyMessage('');
+    }
     state.keyPromptPending = false;
     return;
   }
   setApiKeyModal(true, { allowCancel, presetKey });
-  showApiKeyMessage(message, 'info');
+  if (message) {
+    showApiKeyMessage(message, 'info');
+  } else {
+    showApiKeyMessage('');
+  }
   state.keyPromptPending = false;
 }
 
@@ -1491,23 +1524,103 @@ function undoDelete() {
 
 function showAuthMessage(text, tone = 'info') {
   if (!elements.authMessage) return;
-  const toneClass = palette[tone] || palette.info;
   elements.authMessage.textContent = text;
-  elements.authMessage.className = `mt-3 text-sm min-h-[1.25rem] ${toneClass}`;
+  let toneClass = 'macro-modal__message--info';
+  if (tone === 'error') toneClass = 'macro-modal__message--error';
+  if (tone === 'success') toneClass = 'macro-modal__message--success';
+  elements.authMessage.className = `macro-modal__message ${toneClass}`;
+  if (elements.authEmailInput) {
+    if (tone === 'error') {
+      elements.authEmailInput.classList.add('macro-input--error');
+    } else {
+      elements.authEmailInput.classList.remove('macro-input--error');
+    }
+  }
+}
+
+function updateAuthModalView(authState = state.auth) {
+  if (!elements.authModal) return;
+  const status = authState?.status;
+  const iconWrapper = elements.authModalIcon;
+  const titleEl = elements.authModalTitle;
+  const descriptionEl = elements.authModalDescription;
+  const formFields = elements.authFormFields;
+  const submitButton = elements.authSubmitButton;
+  const email = authState?.linkSentTo || authState?.email || '';
+  const highlightTarget = email || 'your email address';
+  const defaultDescription = 'Easily turn your favorite tweets into articles. Comes with Offline Support, Cloud Sync, and Local Caching.';
+
+  if (iconWrapper) {
+    iconWrapper.classList.remove('macro-modal__icon-wrapper--image');
+  }
+
+  if (status === 'link-sent') {
+    if (iconWrapper) {
+      iconWrapper.classList.add('macro-modal__icon-wrapper--image');
+      iconWrapper.innerHTML = '<img src="./assets/inbox.svg" alt="Inbox icon" class="macro-modal__icon" />';
+    }
+    if (titleEl) {
+      titleEl.textContent = 'Check your inbox';
+    }
+    if (descriptionEl) {
+      descriptionEl.innerHTML = '';
+      const prefix = document.createTextNode('A sign-in email has been sent to ');
+      const highlight = document.createElement('span');
+      highlight.className = 'macro-modal__highlight';
+      highlight.textContent = highlightTarget;
+      const suffix = document.createTextNode('. It lets you sign in to Macro with just a click!');
+      descriptionEl.append(prefix, highlight, suffix);
+    }
+    if (formFields) {
+      formFields.classList.add('hidden');
+    }
+    if (submitButton) {
+      submitButton.textContent = 'Resend Magic Email';
+    }
+  } else {
+    if (iconWrapper) {
+      iconWrapper.classList.remove('macro-modal__icon-wrapper--image');
+      iconWrapper.innerHTML = '<span class="macro-icon-dot macro-icon-dot--primary"></span>';
+    }
+    if (titleEl) {
+      titleEl.textContent = 'Macro';
+    }
+    if (descriptionEl) {
+      descriptionEl.textContent = defaultDescription;
+    }
+    if (formFields) {
+      formFields.classList.remove('hidden');
+    }
+    if (submitButton) {
+      submitButton.textContent = 'Send Magic Email';
+    }
+  }
+
+  updateAuthButtonState();
 }
 
 function setApiKeyModal(isVisible, { allowCancel = false, presetKey = '' } = {}) {
+  if (!elements.modal || !elements.apiKeyInput) return;
   if (isVisible) {
     elements.apiKeyInput.value = presetKey;
-    elements.apiKeyCancel.classList.toggle('hidden', !allowCancel);
+    if (elements.apiKeyCancel) {
+      elements.apiKeyCancel.classList.toggle('hidden', !allowCancel);
+    }
     elements.modal.classList.remove('hidden');
     showApiKeyMessage('');
-    setTimeout(() => elements.apiKeyInput.focus(), 0);
+    setTimeout(() => elements.apiKeyInput?.focus(), 0);
+    updateApiKeyButtonState();
   } else {
     elements.modal.classList.add('hidden');
     elements.apiKeyInput.value = '';
-    showApiKeyMessage('');
+    if (elements.apiKeySubmit) {
+      elements.apiKeySubmit.disabled = false;
+      elements.apiKeySubmit.textContent = 'Continue';
+    }
+    elements.apiKeyInput.classList.remove('macro-input--error');
   }
+  syncChromeVisibility();
+  updateApiKeyButtonState();
 }
 
 function setAuthModal(isVisible, { presetEmail = '' } = {}) {
@@ -1518,29 +1631,67 @@ function setAuthModal(isVisible, { presetEmail = '' } = {}) {
       elements.authEmailInput.value = presetEmail;
       setTimeout(() => elements.authEmailInput?.focus(), 0);
     }
+    updateAuthModalView();
     showAuthMessage('');
   } else {
     elements.authModal.classList.add('hidden');
     authSubmitInFlight = false;
     if (elements.authEmailInput) {
       elements.authEmailInput.value = '';
+      elements.authEmailInput.classList.remove('macro-input--error');
     }
     if (elements.authSubmitButton) {
       elements.authSubmitButton.disabled = false;
-      elements.authSubmitButton.textContent = 'Send link';
+      elements.authSubmitButton.textContent = 'Send Magic Email';
     }
     showAuthMessage('');
+    updateAuthModalView();
   }
+  syncChromeVisibility();
+  updateAuthButtonState();
+}
+
+function updateAuthButtonState() {
+  if (!elements.authSubmitButton || !elements.authEmailInput) return;
+  const email = elements.authEmailInput.value.trim();
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const disabled = (!isValidEmail && state.auth.status !== 'link-sent') || authSubmitInFlight;
+  elements.authSubmitButton.disabled = disabled;
+}
+
+function updateApiKeyButtonState() {
+  if (!elements.apiKeySubmit || !elements.apiKeyInput) return;
+  const hasKey = Boolean(elements.apiKeyInput.value.trim());
+  const disabled = !hasKey || state.isAuthenticating;
+  elements.apiKeySubmit.disabled = disabled;
+}
+
+function syncChromeVisibility() {
+  const hasApiScreen = !!elements.modal && !elements.modal.classList.contains('hidden');
+  const hasAuthScreen = !!elements.authModal && !elements.authModal.classList.contains('hidden');
+  const fullScreenVisible = hasApiScreen || hasAuthScreen;
+
+  const chromeNodes = [
+    elements.header,
+    elements.list?.closest('main') || document.querySelector('main'),
+    elements.form
+  ];
+
+  chromeNodes.forEach((node) => {
+    if (!node) return;
+    node.classList.toggle('hidden', fullScreenVisible);
+  });
 }
 
 function setSavingState(isSaving) {
   state.isSaving = isSaving;
 }
-
 function setAuthenticating(isAuthenticating) {
   state.isAuthenticating = isAuthenticating;
-  elements.apiKeySubmit.disabled = isAuthenticating;
-  elements.apiKeySubmit.textContent = isAuthenticating ? 'Verifying...' : 'Save Key';
+  if (elements.apiKeySubmit) {
+    elements.apiKeySubmit.textContent = isAuthenticating ? 'Verifying…' : 'Continue';
+  }
+  updateApiKeyButtonState();
 }
 
 async function authenticateKey(key, { skipRemoteStore = false } = {}) {
@@ -1579,11 +1730,11 @@ async function authenticateKey(key, { skipRemoteStore = false } = {}) {
 async function handleApiKeySubmit() {
   const key = elements.apiKeyInput.value.trim();
   if (!key) {
-    showApiKeyMessage('Please enter your twitterapi.io API key.', 'error');
+    showApiKeyMessage('Please enter a valid API key.', 'error');
     return;
   }
 
-  showApiKeyMessage('Verifying key...', 'info');
+  showApiKeyMessage('Verifying key…', 'info');
   try {
     await authenticateKey(key);
     showApiKeyMessage('API key verified.', 'success');
@@ -1591,7 +1742,11 @@ async function handleApiKeySubmit() {
     setApiKeyModal(false);
     focusTweetInput();
   } catch (error) {
-    showApiKeyMessage(error.message || 'Unable to verify key.', 'error');
+    const message = error.message && typeof error.message === 'string'
+      ? error.message
+      : 'Please enter a valid API key.';
+    showApiKeyMessage(message, 'error');
+    updateApiKeyButtonState();
   }
 }
 
@@ -1612,12 +1767,12 @@ async function handleAuthSubmit(event) {
   if (authSubmitInFlight) return;
   authSubmitInFlight = true;
   elements.authSubmitButton.disabled = true;
-  elements.authSubmitButton.textContent = 'Sending...';
-  showAuthMessage('Sending magic link...', 'info');
+  elements.authSubmitButton.textContent = 'Sending…';
+  showAuthMessage('Sending magic link…', 'info');
 
   try {
     await requestMagicLink(rawEmail);
-    showAuthMessage(`Magic link sent to ${rawEmail}.`, 'success');
+    showAuthMessage('');
   } catch (error) {
     const message = error?.message || 'Unable to send magic link.';
     showAuthMessage(message, 'error');
@@ -1626,8 +1781,9 @@ async function handleAuthSubmit(event) {
     if (elements.authSubmitButton) {
       const linkSent = state.auth.status === 'link-sent';
       elements.authSubmitButton.disabled = false;
-      elements.authSubmitButton.textContent = linkSent ? 'Resend link' : 'Send link';
+      elements.authSubmitButton.textContent = linkSent ? 'Resend Magic Email' : 'Send Magic Email';
     }
+    updateAuthButtonState();
   }
 }
 
